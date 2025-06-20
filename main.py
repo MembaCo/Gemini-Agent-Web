@@ -193,6 +193,16 @@ def parse_agent_response(response: str) -> dict | None:
 
 def check_and_manage_positions():
     """Tüm açık pozisyonları tek bir API çağrısıyla çeker ve yönetir."""
+    # --- YENİ EKLENEN KOD BAŞLANGICI ---
+    # Eğer canlı işlem modunda değilsek, bu fonksiyonun pozisyonları silmesini engelle.
+    # Simülasyon modunda sadece TP/SL kontrolleri yapılmalı, borsa ile senkronizasyon yapılmamalı.
+    if not config.LIVE_TRADING:
+        # Simülasyon modundayken bile SL/TP kontrollerini yapmak faydalı olabilir,
+        # ancak şimdilik en güvenli çözüm fonksiyonu tamamen atlamaktır.
+        # İleride buraya sadece simüle edilmiş SL/TP kontrolü eklenebilir.
+        return 
+    # --- YENİ EKLENEN KOD SONU ---
+
     exchange_positions_raw = get_open_positions_from_exchange.invoke({})
     if not isinstance(exchange_positions_raw, list):
         logging.error(f"Borsadan pozisyonlar alınamadı, dönen veri: {exchange_positions_raw}"); return
