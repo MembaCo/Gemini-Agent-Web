@@ -1,0 +1,42 @@
+manifestVersion: 1
+id: "gemini-trading-agent"
+name: "Gemini Trading Agent"
+tagline: "AI-Powered Crypto Trading Bot"
+icon: "https://some-url.com/icon.svg" # Buraya kendi ikonunuzun URL'sini ekleyin
+category: "Utilities"
+version: "1.8.0"
+port: 5001
+description: >-
+  Google Gemini AI ve LangChain kullanarak kripto para piyasalarında işlem yapan çok yönlü bir trading botu.
+  
+  - Teknik, duyarlılık ve temel analiz
+  - Gelişmiş risk yönetimi
+  - İnteraktif Telegram ve Web kontrolü
+  - Kalıcı SQLite veritabanı
+
+# Geliştirici bilgileri
+developer: "Memba Co."
+website: "https://github.com/membaco" # Kendi web siteniz veya GitHub profiliniz
+submitter: "Memba Co."
+submission: "https://github.com/membaco/gemini-trading-agent" # Projenizin GitHub linki
+
+# Bağımlılıklar (şimdilik boş)
+dependencies: []
+
+# Yayın notları
+releaseNotes: "Umbrel OS için ilk entegrasyon ve web arayüzü kontrolü eklendi."
+
+# Umbrel'in bu uygulamayı nasıl çalıştıracağını belirten kısım
+# docker-compose.yml'deki bilgiler buraya taşınır.
+compose:
+  services:
+    app:
+      image: getumbrel/umbrel-app-template:1.0.0 # Umbrel genellikle kendi base imajını kullanır, ama build context de destekler.
+      # Alternatif olarak doğrudan kendi imajınızı build edebilirsiniz:
+      # build: . 
+      env_file:
+        - .env
+      volumes:
+        # Umbrel, verileri otomatik olarak kendi /data klasörüne bağlar.
+        # Bu yüzden burada belirtilen hedef /app/data olmalıdır.
+        - ${APP_DATA_DIR}:/data

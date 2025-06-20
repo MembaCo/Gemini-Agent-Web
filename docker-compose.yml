@@ -1,0 +1,14 @@
+services:
+  gemini-trading-agent:
+    build: .
+    container_name: gemini-trading-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./app_data:/app/data
+
+volumes:
+  app_data:

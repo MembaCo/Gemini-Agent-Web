@@ -1,0 +1,20 @@
+# Langchain and Google
+langchain
+langchain-google-genai
+google-generativeai
+
+# Core Data Libraries - UYUMLULUK İÇİN SABİTLENMİŞTİR
+numpy==1.26.4
+pandas==2.2.3
+pandas-ta
+mplfinance
+
+# Web and Utility
+python-dotenv
+ccxt
+tenacity
+requests
+Flask
+Flask-Cors
+waitress
+python-telegram-bot
