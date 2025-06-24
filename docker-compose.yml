@@ -1,24 +1,30 @@
-# ==============================================================================
-# File: docker-compose.yml
+# docker-compose.yml (Tek Servisli Yapı)
 # @author: Memba Co.
-# ==============================================================================
+
 version: '3.8'
 
 services:
+  # Tek ve Birleşik Uygulama Servisi
   gemini-agent:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Projenin kök dizinindeki Dockerfile'ı kullanarak imajı oluştur.
+    build: .
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
+    
+    # DÜZELTME: 'env_file' direktifi kaldırıldı.
+    # Umbrel, umbrel-app.yml dosyasındaki 'env' listesine göre
+    # gerekli ortam değişkenlerini kurulum sırasında kullanıcıya sorarak
+    # konteynere kendisi enjekte edecektir. Bu, daha güvenli ve uyumlu bir yöntemdir.
+
+    # Veritabanı dosyalarını içeren 'data' klasörünü kalıcı hale getirir.
     volumes:
       - ./data:/app/data
+      
+    # Konteynerin 8000 portunu, dışarıdan erişim için makinenin 8080 portuna bağla.
     ports:
       - "8080:8000"
+      
     networks:
       - gemini-agent-net
-    stop_signal: SIGINT
 
 networks:
   gemini-agent-net:
