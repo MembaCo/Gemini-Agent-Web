@@ -1,0 +1,85 @@
+# ==============================================================================
+# File: backend/main.py
+# @author: Memba Co.
+# ==============================================================================
+import logging
+import uvicorn
+import os
+import asyncio
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, APIRouter
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
+from starlette.responses import FileResponse
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+import database
+from tools import exchange as exchange_tools
+from core import agent, scanner, position_manager, app_config
+from api import (
+    analysis_router,
+    dashboard_router,
+    positions_router,
+    scanner_router,
+    settings_router,
+)
+from telegram_bot import create_telegram_app
+
+scheduler = AsyncIOScheduler()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logging.info("Uygulama başlatılıyor (lifespan)...")
+    database.init_db()
+    app_config.load_config()
+    
+    exchange_tools.initialize_exchange(app_config.settings.get('DEFAULT_MARKET_TYPE'))
+    agent.initialize_agent()
+    
+    telegram_app = create_telegram_app()
+    if telegram_app:
+        app.state.telegram_app = telegram_app
+        await telegram_app.initialize()
+        await telegram_app.start()
+        asyncio.create_task(telegram_app.updater.start_polling())
+        logging.info("Telegram botu başlatıldı ve komutları dinliyor.")
+    
+    logging.info("Arka plan görevleri (Scheduler) ayarlanıyor...")
+    scheduler.add_job(position_manager.check_all_managed_positions, "interval", seconds=app_config.settings.get('POSITION_CHECK_INTERVAL_SECONDS', 60), id="position_checker_job")
+    if app_config.settings.get('PROACTIVE_SCAN_ENABLED'):
+        scheduler.add_job(scanner.execute_single_scan_cycle, "interval", seconds=app_config.settings.get('PROACTIVE_SCAN_INTERVAL_SECONDS', 900), id="scanner_job")
+    
+    scheduler.start()
+    logging.info("Uygulama başlangıcı tamamlandı. API kullanıma hazır.")
+    yield
+    logging.info("Uygulama kapatılıyor (lifespan)...")
+    if hasattr(app.state, "telegram_app") and app.state.telegram_app and hasattr(app.state.telegram_app, 'updater') and app.state.telegram_app.updater.running:
+        await app.state.telegram_app.updater.stop()
+        await app.state.telegram_app.stop()
+        await app.state.telegram_app.shutdown()
+        logging.info("Telegram botu durduruldu.")
+    scheduler.shutdown()
+
+app = FastAPI(title="Gemini Trading Agent API", version="3.2.1-stable", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+api_router = APIRouter(prefix="/api")
+api_router.include_router(analysis_router)
+api_router.include_router(positions_router)
+api_router.include_router(dashboard_router)
+api_router.include_router(settings_router)
+api_router.include_router(scanner_router)
+app.include_router(api_router)
+
+try:
+    static_files_path = os.path.join(os.path.dirname(__file__), "static")
+    app.mount('/assets', StaticFiles(directory=os.path.join(static_files_path, "assets")), name='assets')
+    
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_react_app(full_path: str):
+        return FileResponse(os.path.join(static_files_path, "index.html"))
+except RuntimeError:
+    logging.warning("Statik dosyalar ('static' klasörü) bulunamadı. Sadece API modunda çalışılıyor.")
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,0 +1,37 @@
+# umbrel-app.yml
+manifestVersion: 1
+id: "gemini-trading-agent"
+name: "Gemini Trading Agent"
+tagline: "Yapay zeka destekli, kişisel kripto ticaret botu."
+icon: "https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/main/assets/icon.png"
+category: "Finance"
+version: "3.1.1"
+port: 8080 # docker-compose.yml'de belirlediğimiz port
+description: |
+  Gemini Trading Agent, Google'ın Gemini AI modellerini kullanarak kripto para piyasalarında analiz yapan ve işlem gerçekleştiren gelişmiş bir bottur.
+
+  Kendi API anahtarlarınızla, kendi sunucunuzda tam kontrolle çalıştırın. Web arayüzü sayesinde performansınızı takip edin, ayarlarınızı anlık olarak değiştirin ve manuel analizler yapın.
+
+developer: "Memba Co."
+website: "https://github.com/MembaCo/Gemini-Agent-Web"
+submitter: "Memba Co."
+submission: "https://github.com/MembaCo/Gemini-Agent-Web"
+repo: "https://github.com/MembaCo/Gemini-Agent-Web"
+support: "https://github.com/MembaCo/Gemini-Agent-Web/issues"
+gallery:
+  - "https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/main/assets/gallery-1.png"
+  - "https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/main/assets/gallery-2.png"
+  - "https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/main/assets/gallery-3.png"
+
+composeFile: "docker-compose.yml" 
+
+env:
+  - "GOOGLE_API_KEY"
+  - "BINANCE_API_KEY"
+  - "BINANCE_SECRET_KEY"
+  - "TELEGRAM_BOT_TOKEN"
+  - "TELEGRAM_CHAT_ID"
+  - "USE_TESTNET"
+  - "AGENT_VERBOSE"
+
+mainService: "gemini-agent"

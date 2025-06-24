@@ -1,0 +1,25 @@
+# ==============================================================================
+# File: docker-compose.yml
+# @author: Memba Co.
+# ==============================================================================
+version: '3.8'
+
+services:
+  gemini-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8080:8000"
+    networks:
+      - gemini-agent-net
+    stop_signal: SIGINT
+
+networks:
+  gemini-agent-net:
+    driver: bridge
