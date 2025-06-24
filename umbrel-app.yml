@@ -1,4 +1,3 @@
-# umbrel-app.yml
 manifestVersion: 1
 id: "gemini-trading-agent"
 name: "Gemini Trading Agent"
@@ -28,5 +27,4 @@ env:
   - "TELEGRAM_CHAT_ID"
   - "USE_TESTNET"
   - "AGENT_VERBOSE"
-
 mainService: "gemini-agent"
