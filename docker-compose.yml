@@ -1,16 +1,19 @@
-# docker-compose.yml (Tek Servisli Yapı)
+# docker-compose.yml
 # @author: Memba Co.
 
+# Docker Compose sürüm 3.8'i kullanıyoruz.
 version: '3.8'
 
+# Çalıştırılacak servisleri tanımlıyoruz.
 services:
-  # Tek ve Birleşik Uygulama Servisi
+  # Uygulamamızın ana servisi
   gemini-agent:
-    # Projenin kök dizinindeki Dockerfile'ı kullanarak imajı oluştur.
+    # İmajı, projenin ana dizinindeki Dockerfile'dan oluştur.
     build: .
+    # Konteyner bir hata nedeniyle durursa, manuel olarak durdurulmadıkça yeniden başlat.
     restart: unless-stopped
     
-    # DÜZELTME: 'env_file' direktifi kaldırıldı.
+    # DÜZELTME: 'env_file' direktifi tamamen kaldırıldı.
     # Umbrel, umbrel-app.yml dosyasındaki 'env' listesine göre
     # gerekli ortam değişkenlerini kurulum sırasında kullanıcıya sorarak
     # konteynere kendisi enjekte edecektir. Bu, daha güvenli ve uyumlu bir yöntemdir.
@@ -23,9 +26,11 @@ services:
     ports:
       - "8080:8000"
       
+    # Servislerin birbirleriyle iletişim kuracağı ağı tanımla.
     networks:
       - gemini-agent-net
 
+# Uygulama için özel bir ağ oluşturuyoruz.
 networks:
   gemini-agent-net:
     driver: bridge

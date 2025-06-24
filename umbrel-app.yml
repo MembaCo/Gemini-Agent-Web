@@ -5,8 +5,8 @@ name: "Gemini Trading Agent"
 tagline: "Yapay zeka destekli, kişisel kripto ticaret botu."
 icon: "https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/main/assets/icon.png"
 category: "Finance"
-version: "3.1.1"
-port: 8080 # docker-compose.yml'de belirlediğimiz port
+version: "3.2.2"
+port: 8080
 description: |
   Gemini Trading Agent, Google'ın Gemini AI modellerini kullanarak kripto para piyasalarında analiz yapan ve işlem gerçekleştiren gelişmiş bir bottur.
 
@@ -14,17 +14,12 @@ description: |
 
 developer: "Memba Co."
 website: "https://github.com/MembaCo/Gemini-Agent-Web"
-submitter: "Memba Co."
-submission: "https://github.com/MembaCo/Gemini-Agent-Web"
-repo: "https://github.com/MembaCo/Gemini-Agent-Web"
-support: "https://github.com/MembaCo/Gemini-Agent-Web/issues"
-gallery:
-  - "https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/main/assets/gallery-1.png"
-  - "https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/main/assets/gallery-2.png"
-  - "https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/main/assets/gallery-3.png"
+# ... diğer manifesto alanları ...
 
 composeFile: "docker-compose.yml" 
 
+# Umbrel'in, kurulum sırasında kullanıcıya hangi API anahtarlarını soracağını belirtir.
+# Bu, .env dosyasını otomatik olarak oluşturmasını ve yönetmesini sağlar.
 env:
   - "GOOGLE_API_KEY"
   - "BINANCE_API_KEY"
