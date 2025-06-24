@@ -1,6 +1,20 @@
 Değişiklik Günlüğü
 Bu projede yapılan tüm önemli değişiklikler bu dosyada belgelenmektedir.
 
+[3.2.1] - 2025-06-24 - Stabilite ve Docker Düzeltmeleri
+Bu sürüm, Docker ortamında karşılaşılan kritik başlatma hatalarını ve kütüphane uyumsuzluklarını gidererek, Umbrel ve diğer self-host platformlarında stabil bir çalışma deneyimi sunmaya odaklanmıştır.
+
+✅ Düzeltildi (Fixed)
+Docker Başlatma Hatası (ImportError): pandas-ta kütüphanesinin, numpy kütüphanesinin yeni sürümleriyle uyumsuz olmasından kaynaklanan ImportError: cannot import name 'NaN' from 'numpy' hatası, requirements.txt dosyasında numpy versiyonu sabitlenerek giderildi.
+
+Docker Yol Hatası (ModuleNotFoundError): Docker konteyneri içinde, main.py'nin modülleri backend. ön ekiyle aramasından kaynaklanan No module named 'backend' hatası, import yolları düzeltilerek giderildi.
+
+PNL Hesaplama Uyumsuzluğu: Kapatılan işlemlerdeki PNL hesaplamasının, borsanın gösterdiği değerle tam uyumlu olması için, anlık fiyat yerine emrin borsada gerçekleştiği ortalama fiyatı kullanan yeni bir mantık entegre edildi.
+
+Pozisyon Kapatma API Hatası (405 Method Not Allowed): "BTC/USDT" gibi / karakteri içeren sembollerin pozisyon kapatma isteğinde API'nin hata vermesi, API rotası {symbol:path} olarak güncellenerek düzeltildi.
+
+API Kota Yönetimi: Proaktif tarayıcı, Google AI API kullanım kotası aşıldığında (ResourceExhausted hatası) taramayı otomatik olarak durduracak ve durumu bildirecek şekilde daha dayanıklı hale getirildi.
+
 [3.0.0] - 2025-06-24 - Web Arayüzü & Docker
 Bu sürüm, projeyi komut satırı tabanlı bir uygulamadan, web arayüzü ile yönetilen, kendi kendine barındırılabilen (self-hosted) tam kapsamlı bir platforma dönüştüren en büyük mimari değişikliği içerir.
 
@@ -21,7 +35,7 @@ Tüm bot yapılandırması (LEVERAGE, RISK_PER_TRADE_PERCENT, BLACKLIST vb.) art
 
 Ayarlar, web arayüzündeki "Uygulama Ayarları" modalı üzerinden, sunucuyu yeniden başlatmaya gerek kalmadan anlık olarak değiştirilebilir.
 
-Docker & Umbrel Desteği:
+Kolay Kurulum (Self-Hosted & Umbrel):
 
 Dockerfile ve docker-compose.yml dosyaları ile proje tamamen konteynerize edildi.
 
@@ -42,14 +56,6 @@ Eski komut satırı tabanlı menü (main.py içindeki while True döngüsü).
 Eski Flask tabanlı basit dashboard (dashboard/ klasörü).
 
 Statik ayar dosyası (config.py).
-
-[2.0.0] - (Dahili Geliştirme Sürümü) - API Geçişi
-Bu versiyon, konsol uygulamasından web tabanlı yapıya geçişin ara aşamasını temsil eder.
-
-🚀 Eklendi (Added)
-FastAPI Entegrasyonu: Projenin çekirdeğine FastAPI web çatısı eklenerek, bot fonksiyonları API endpoint'leri olarak sunulmaya başlandı.
-
-Çekirdek Modüller: İş mantığı, core (agent, trader, scanner) ve api klasörleri oluşturularak modüler hale getirildi.
 
 [1.6.1] - 2025-06-13 - Stabilizasyon ve Hata Düzeltmeleri
 ✅ Düzeltildi (Fixed)

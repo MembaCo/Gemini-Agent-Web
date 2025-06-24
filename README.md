@@ -6,7 +6,7 @@ Modern web arayüzü sayesinde tüm operasyonlarınızı kolayca yönetebilir, p
 ✨ Temel Özellikler
 Web Tabanlı Kontrol Paneli: React ile geliştirilmiş modern, hızlı ve duyarlı arayüz sayesinde botunuzu her yerden yönetin.
 
-Dinamik ve Veritabanı Tabanlı Ayarlar: Botun tüm strateji ve risk yönetimi ayarları (LEVERAGE, RISK_PER_TRADE_PERCENT, BLACKLIST vb.) artık web arayüzünden anlık olarak değiştirilebilir ve kalıcı olarak veritabanında saklanır.
+Dinamik ve Veritabanı Tabanlı Ayarlar: Botun tüm strateji ve risk yönetimi ayarları (LEVERAGE, RISK_PER_TRADE_PERCENT, BLACKLIST vb.) artık web arayüzündeki "Uygulama Ayarları" modalı üzerinden, sunucuyu yeniden başlatmaya gerek kalmadan anlık olarak değiştirilebilir ve kalıcı olarak veritabanında saklanır.
 
 Kolay Kurulum (Self-Hosted & Umbrel): Docker teknolojisi sayesinde, tek bir komutla kendi sunucunuza veya Umbrel gibi kişisel sunucu platformlarına kolayca kurun.
 
@@ -24,6 +24,8 @@ Proaktif Fırsat Avcısı: Piyasayı sizin için sürekli tarar, potansiyel alı
 
 Kalıcı Veritabanı Mimarisi: Tüm aktif pozisyonlar, ayarlar ve işlem geçmişi, yeniden başlatmalarda kaybolmayan sağlam bir SQLite veritabanında saklanır.
 
+Telegram Entegrasyonu: Telegram komutları ile botunuza analiz yaptırın, pozisyonlarınızı kontrol edin ve anlık bildirimler alın.
+
 🛠️ Teknoloji Yığını
 Backend: Python, FastAPI, LangChain, CCXT, Pandas-TA
 
@@ -31,7 +33,7 @@ Frontend: React, Vite, Tailwind CSS, Chart.js
 
 Veritabanı: SQLite
 
-Dağıtım (Deployment): Docker, Docker Compose, Nginx
+Dağıtım (Deployment): Docker, Docker Compose
 
 🚀 Kurulum ve Çalıştırma
 Bu uygulama, Docker ile kolayca kurulacak şekilde tasarlanmıştır. Başlamak için bilgisayarınızda Git ve Docker Desktop'ın kurulu olması yeterlidir.
@@ -79,10 +81,11 @@ Kurulum tamamlandığında, web tarayıcınızdan aşağıdaki adrese giderek Ge
 ### ☂️ Umbrel OS Üzerine Kurulum
 
 1.  Umbrel arayüzünüzden **App Store**'a gidin.
-2.  Sağ üstteki üç noktaya tıklayarak **"Install a custom app"** seçeneğini seçin.
+2.  Sağ üst köşedeki **"Install Custom App"** (Özel Uygulama Yükle) butonuna tıklayın.
 3.  Açılan pencereye projenizin GitHub linkini yapıştırın:
     `https://github.com/MembaCo/Gemini-Agent-Web.git`
-4.  **"Install"** butonuna tıklayın. Umbrel, kurulum sırasında size API anahtarlarınızı soracak ve uygulamayı sizin için otomatik olarak kurup başlatacaktır.
+4.  **"Install"** butonuna tıklayın. Umbrel, `umbrel-app.yml` dosyasını okuyacak, size API anahtarlarınızı soracak, Docker imajını oluşturacak ve uygulamayı sizin için başlatacaktır.
+5.  Yükleme tamamlandığında, Umbrel ana ekranınızda "Gemini Trading Agent" ikonunu göreceksiniz. Tıkladığınızda, doğrudan web arayüzüne yönlendirileceksiniz.
 
 ---
 
