@@ -1,3 +1,5 @@
+.gitignore
+
 backend/.env
 __pycache__
 backend/__pycache__
@@ -12,3 +14,4 @@ frontend/node_modules
 .git
 frontend/.env
 backend/trades.db
+data/trades.db
