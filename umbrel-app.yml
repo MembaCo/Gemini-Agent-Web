@@ -1,10 +1,10 @@
 manifestVersion: 1
-id: "gemini-trading-agent"
+id: "algo-store-gemini-trading-agent"
 name: "Gemini Trading Agent"
 tagline: "Yapay zeka destekli, kişisel kripto ticaret botu."
 icon: "https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/main/assets/icon.png"
 category: "Finance"
-version: "3.2.2"
+version: "3.2.4"
 port: 8080
 description: |
   Gemini Trading Agent, Google'ın Gemini AI modellerini kullanarak kripto para piyasalarında analiz yapan ve işlem gerçekleştiren gelişmiş bir bottur.
