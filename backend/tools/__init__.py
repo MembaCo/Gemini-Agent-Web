@@ -13,6 +13,7 @@ from .exchange import (
     get_technical_indicators,
     get_atr_value,
     get_top_gainers_losers,
+    get_volume_spikes,
     execute_trade_order,
     update_stop_loss_order,
     get_open_positions_from_exchange,

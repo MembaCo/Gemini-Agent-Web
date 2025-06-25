@@ -146,7 +146,80 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
         logging.error(f"Teknik gösterge alınırken genel hata: {e}", exc_info=True)
         return {"status": "error", "message": f"Beklenmedik bir hata oluştu: {str(e)}"}
 
-# ... (Diğer fonksiyonlar değişmeden kalır) ...
+def get_volume_spikes(timeframe: str, period: int, multiplier: float, min_volume_usdt: int) -> list:
+    """
+    Belirtilen zaman aralığında, son mumu bir önceki 'period' mumun
+    ortalama hacminin 'multiplier' katından fazla olan işlem çiftlerini bulur.
+    """
+    if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future':
+        return []
+    
+    logging.info(f"Hacim patlaması taraması başlatıldı: Zaman Aralığı={timeframe}, Periyot={period}, Çarpan={multiplier}")
+    
+    try:
+        # Önce tüm piyasaları al ve 24s hacme göre ön filtreleme yap
+        all_tickers = exchange.fapiPublicGetTicker24hr()
+        filtered_tickers = [
+            t for t in all_tickers 
+            if t.get('symbol', '').endswith('USDT') and float(t.get('quoteVolume', 0)) > min_volume_usdt
+        ]
+        
+        logging.info(f"Hacim analizi için {len(filtered_tickers)} adet sembol ön filtreden geçti.")
+        
+        volume_spikes = []
+        
+        for ticker in filtered_tickers:
+            symbol = ticker['symbol']
+            try:
+                # Gerekli mum sayısını çek (periyot + son mum)
+                bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=period + 1)
+                
+                if len(bars) < period + 1:
+                    continue # Yeterli veri yok, bir sonraki sembole geç
+                
+                df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                
+                # Olası NaN değerlerini önlemek için sayısal tipe dönüştür
+                df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
+                df.dropna(subset=['volume'], inplace=True)
+
+                if len(df) < period + 1:
+                    continue
+
+                # Son mumu ve önceki periyodu ayır
+                last_volume = df['volume'].iloc[-1]
+                average_volume = df['volume'].iloc[-period-1:-1].mean()
+                
+                if pd.isna(last_volume) or pd.isna(average_volume) or average_volume == 0:
+                    continue
+                    
+                # Hacim patlamasını kontrol et
+                if last_volume > average_volume * multiplier:
+                    spike_info = {
+                        "symbol": _get_unified_symbol(symbol),
+                        "spike_ratio": last_volume / average_volume,
+                        "last_volume": last_volume,
+                        "average_volume": average_volume
+                    }
+                    volume_spikes.append(spike_info)
+                    logging.info(f"Hacim Patlaması Tespit Edildi: {symbol} | Oran: {spike_info['spike_ratio']:.2f}x")
+                    
+                # Rate limit'e takılmamak için her istek arasında kısa bir süre bekle
+                time.sleep(exchange.rateLimit / 1000) 
+            
+            except Exception as e:
+                # Tek bir semboldeki hata tüm döngüyü durdurmasın
+                logging.warning(f"{symbol} için hacim analizi sırasında hata: {e}")
+                continue
+
+        # En yüksek orana göre sırala
+        volume_spikes.sort(key=lambda x: x['spike_ratio'], reverse=True)
+        return volume_spikes
+
+    except Exception as e:
+        logging.error(f"Hacim patlaması listesi alınırken genel hata: {e}", exc_info=True)
+        return []
+    
 def get_atr_value(symbol_and_timeframe: str) -> dict:
     if not exchange: return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
     try:

@@ -28,6 +28,16 @@ const Switch = ({ checked, onChange }) => (
     </button>
 );
 
+const TooltipWrapper = ({ content, children }) => (
+    <div className="relative flex items-center group">
+        {children}
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 text-xs text-white bg-gray-900 border border-gray-700 rounded-md shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none">
+            {content}
+        </div>
+    </div>
+);
+
+
 // ==============================================================================
 //  DASHBOARD'A ÖZGÜ BİLEŞENLER
 // ==============================================================================
@@ -156,37 +166,112 @@ const ProactiveScanner = ({ onRunScan, isScanning }) => ( <div className="bg-gra
 // --- MODAL BİLEŞENLERİ ---
 
 const SettingsModal = ({ settings, isVisible, onClose, onSave }) => {
-    const [editableSettings, setEditableSettings] = useState(settings);
+    const [editableSettings, setEditableSettings] = useState({});
 
     useEffect(() => { 
         if (isVisible) {
-            setEditableSettings(settings); 
+            const { APP_VERSION, ...rest } = settings;
+            setEditableSettings(rest); 
         }
     }, [settings, isVisible]);
 
-    const handleChange = (key, value) => setEditableSettings(prev => ({...prev, [key]: value}));
+    const handleChange = (key, value) => {
+        setEditableSettings(prev => ({...prev, [key]: value}));
+    };
 
+    const settingDefinitions = {
+        'Genel & Model Ayarları': {
+            icon: <BrainCircuit size={20} />,
+            items: {
+                GEMINI_MODEL: { description: "Analizler için kullanılacak Google AI modeli. Flash modelleri daha hızlı ve ucuz, Pro modelleri daha güçlüdür." },
+                DEFAULT_MARKET_TYPE: { description: "İşlemlerin varsayılan olarak hangi piyasada yapılacağını belirler (Vadeli veya Spot)." },
+                DEFAULT_ORDER_TYPE: { description: "Varsayılan emir tipi. 'LIMIT' emirleri belirli bir fiyattan, 'MARKET' emirleri anlık piyasa fiyatından gerçekleşir." },
+                LIVE_TRADING: { description: "DİKKAT! Bu ayar aktifse, bot gerçek parayla işlem yapar. Kapalıysa sadece simülasyon yapar." },
+                TELEGRAM_ENABLED: { description: "Yeni açılan/kapanan pozisyonlar ve fırsatlar hakkında Telegram üzerinden bildirim gönderir." },
+            }
+        },
+        'Risk & Pozisyon Yönetimi': {
+            icon: <Layers size={20} />,
+            items: {
+                LEVERAGE: { description: "Vadeli işlemlerde kullanılacak kaldıraç oranı." },
+                RISK_PER_TRADE_PERCENT: { description: "Her bir işlemde, toplam cüzdan bakiyesinin yüzde kaçının riske edileceğini belirler. Pozisyon büyüklüğü buna göre hesaplanır." },
+                MAX_CONCURRENT_TRADES: { description: "Aynı anda açık olabilecek maksimum pozisyon sayısı." },
+                ATR_MULTIPLIER_SL: { description: "Stop-Loss mesafesini belirlemek için ATR (Ortalama Gerçek Aralık) değerinin çarpılacağı katsayı. Daha büyük değer, daha geniş stop-loss demektir." },
+                RISK_REWARD_RATIO_TP: { description: "Kâr Al (Take-Profit) seviyesinin, riske (Stop-Loss mesafesi) göre oranı. Örn: 2.0 değeri, 1'e 2 risk/kazanç oranı hedefler." },
+            }
+        },
+        'Proaktif Tarayıcı Ayarları': {
+            icon: <Search size={20} />,
+            items: {
+                PROACTIVE_SCAN_ENABLED: { description: "Aktifse, bot arka planda sürekli olarak piyasayı yeni işlem fırsatları için tarar." },
+                PROACTIVE_SCAN_INTERVAL_SECONDS: { description: "Proaktif Tarayıcının iki tarama döngüsü arasında kaç saniye bekleyeceğini belirler." },
+                PROACTIVE_SCAN_AUTO_CONFIRM: { description: "Tarayıcı bir fırsat bulduğunda, kullanıcı onayı olmadan otomatik olarak işlem açar. Yüksek risklidir." },
+                PROACTIVE_SCAN_USE_GAINERS_LOSERS: { description: "Tarama listesine Binance'in 'En Çok Yükselenler/Düşenler' listesini dahil eder." },
+                PROACTIVE_SCAN_USE_VOLUME_SPIKE: { description: "Tarama listesine, işlem hacminde ani artış yaşayan ('Hacim Patlaması') coinleri dahil eder." },
+                PROACTIVE_SCAN_MIN_VOLUME_USDT: { description: "Taranacak coinler için minimum 24 saatlik işlem hacmi (USDT cinsinden). Düşük hacimli coinleri filtreler." },
+                PROACTIVE_SCAN_BLACKLIST: { description: "Bu listedeki coinler (virgülle ayırın) taramalara asla dahil edilmez." },
+                PROACTIVE_SCAN_WHITELIST: { description: "Bu listedeki coinler (virgülle ayırın) her tarama döngüsünde mutlaka analize dahil edilir." },
+            }
+        }
+    };
+    
     const renderInput = (key, value) => {
+        if (key === 'GEMINI_MODEL') {
+            return (
+                <select value={value} onChange={e => handleChange(key, e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1 w-full text-white">
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Hızlı/Ucuz)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Güçlü/Pahalı)</option>
+                    <option value="gemini-1.0-pro">Gemini 1.0 Pro (Standart)</option>
+                </select>
+            );
+        }
+        if (key === 'DEFAULT_MARKET_TYPE') {
+            return (
+                 <select value={value} onChange={e => handleChange(key, e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1 w-full text-white">
+                    <option value="future">Vadeli (Future)</option>
+                    <option value="spot">Spot</option>
+                </select>
+            );
+        }
+        
         if (typeof value === 'boolean') { return <Switch checked={value} onChange={(checked) => handleChange(key, checked)} />; }
         if (typeof value === 'number') { return <input type="number" step="0.1" value={value} onChange={e => handleChange(key, parseFloat(e.target.value) || 0)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-24 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />; }
         if (Array.isArray(value)) { return <input type="text" value={value.join(', ')} onChange={e => handleChange(key, e.target.value.split(',').map(s => s.trim().toUpperCase()))} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />; }
-        return <input type="text" value={value} onChange={e => handleChange(key, e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />;
+        
+        return <input type="text" value={value} onChange={e => handleChange(key, e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1 w-full text-white" />;
     };
 
     return ( 
-        <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-3xl">
+        <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-4xl">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-white">Uygulama Ayarları</h2>
                 <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white"><X size={24} /></button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 max-h-[70vh] overflow-y-auto pr-4 text-sm">
-                {Object.keys(editableSettings).length > 0 ? ( Object.keys(editableSettings).sort().map(key => ( 
-                    <div key={key} className="flex justify-between items-center border-b border-gray-700 py-2 gap-4">
-                        <label className="text-gray-400 flex-shrink-0">{key}</label>
-                        {renderInput(key, editableSettings[key])}
-                    </div> 
-                ))) : ( <p className="text-gray-400 col-span-2">Ayarlar yükleniyor...</p> )}
+            
+            <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-4">
+                {Object.entries(settingDefinitions).map(([sectionTitle, sectionContent]) => (
+                    <div key={sectionTitle} className="bg-gray-900/50 p-4 rounded-lg">
+                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                            {sectionContent.icon} {sectionTitle}
+                        </h3>
+                        <div className="space-y-3">
+                            {Object.entries(sectionContent.items).map(([key, item]) => 
+                                editableSettings.hasOwnProperty(key) && (
+                                <div key={key} className="flex justify-between items-center border-b border-gray-700/50 py-2 gap-4">
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-gray-300 text-sm">{key}</label>
+                                        <TooltipWrapper content={item.description}>
+                                            <Info size={14} className="text-gray-500 cursor-help" />
+                                        </TooltipWrapper>
+                                    </div>
+                                    {renderInput(key, editableSettings[key])}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
             </div>
+
             <div className="mt-6 flex justify-end">
                 <button onClick={() => onSave(editableSettings)} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md flex items-center gap-2">
                     <Save size={18}/>Ayarları Kaydet
@@ -198,130 +283,27 @@ const SettingsModal = ({ settings, isVisible, onClose, onSave }) => {
 
 const AnalysisResultModal = ({ result, isVisible, onClose, onConfirmTrade }) => {
     const isTradeable = result?.recommendation === 'AL' || result?.recommendation === 'SAT';
-    return ( 
-        <Modal isVisible={isVisible} onClose={onClose}>
-            <h2 className="text-2xl font-bold text-white mb-4">Analiz Sonucu</h2>
-            <div className="space-y-3 text-gray-300">
-                <p><span className="font-semibold text-gray-400">Sembol:</span> {result?.symbol}</p>
-                <p><span className="font-semibold text-gray-400">Tavsiye:</span> <span className={`font-bold ${isTradeable ? (result?.recommendation === 'AL' ? 'text-green-400' : 'text-red-400') : 'text-yellow-400'}`}>{result?.recommendation}</span></p>
-                <p><span className="font-semibold text-gray-400">Gerekçe:</span> {result?.reason}</p>
-            </div>
-            <div className="mt-6 flex gap-4">
-                <button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">Kapat</button>
-                {isTradeable && <button onClick={() => onConfirmTrade(result)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md">Pozisyon Aç</button>}
-            </div>
-        </Modal> 
-    );
+    return ( <Modal isVisible={isVisible} onClose={onClose}><h2 className="text-2xl font-bold text-white mb-4">Analiz Sonucu</h2><div className="space-y-3 text-gray-300"><p><span className="font-semibold text-gray-400">Sembol:</span> {result?.symbol}</p><p><span className="font-semibold text-gray-400">Tavsiye:</span> <span className={`font-bold ${isTradeable ? (result?.recommendation === 'AL' ? 'text-green-400' : 'text-red-400') : 'text-yellow-400'}`}>{result?.recommendation}</span></p><p><span className="font-semibold text-gray-400">Gerekçe:</span> {result?.reason}</p></div><div className="mt-6 flex gap-4"><button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">Kapat</button>{isTradeable && <button onClick={() => onConfirmTrade(result)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md">Pozisyon Aç</button>}</div></Modal> );
 };
 
-const ConfirmationModal = ({ isVisible, onClose, onConfirm, title, children }) => ( 
-    <Modal isVisible={isVisible} onClose={onClose}>
-        <h2 className="text-2xl font-bold text-white mb-4">{title}</h2>
-        <div className="text-gray-300 mb-6">{children}</div>
-        <div className="flex gap-4">
-            <button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">İptal</button>
-            <button onClick={onConfirm} className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-md">Onayla</button>
-        </div>
-    </Modal> 
-);
+const ConfirmationModal = ({ isVisible, onClose, onConfirm, title, children }) => ( <Modal isVisible={isVisible} onClose={onClose}><h2 className="text-2xl font-bold text-white mb-4">{title}</h2><div className="text-gray-300 mb-6">{children}</div><div className="flex gap-4"><button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">İptal</button><button onClick={onConfirm} className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-md">Onayla</button></div></Modal> );
 
-// === DEĞİŞTİRİLDİ: ScanResultModal güncellendi ===
 const ScanResultModal = ({ results, isVisible, onClose, onConfirmTrade, processingOpportunities }) => {
     const getIcon = (type) => {
-        switch (type) {
-            case 'success': return <CheckCircle className="text-green-400" size={18} />;
-            case 'opportunity': return <Zap className="text-yellow-400" size={18} />;
-            case 'error': return <AlertTriangle className="text-orange-400" size={18} />;
-            case 'critical': return <XCircle className="text-red-500" size={18} />;
-            default: return <Info className="text-blue-400" size={18} />;
-        }
+        switch (type) { case 'success': return <CheckCircle className="text-green-400" size={18} />; case 'opportunity': return <Zap className="text-yellow-400" size={18} />; case 'error': return <AlertTriangle className="text-orange-400" size={18} />; case 'critical': return <XCircle className="text-red-500" size={18} />; default: return <Info className="text-blue-400" size={18} />; }
     };
-
     const renderActionButton = (item) => {
         if (item.type !== 'opportunity') return null;
-
         const status = processingOpportunities[item.data.symbol];
-
-        if (status === 'loading') {
-            return (
-                <button disabled className="mt-2 text-xs bg-gray-500 text-white font-semibold px-3 py-1 rounded-md flex items-center gap-1.5">
-                    <Loader2 size={14} className="animate-spin" />
-                    İşleniyor...
-                </button>
-            );
-        }
-
-        if (status === 'success') {
-            return (
-                <button disabled className="mt-2 text-xs bg-green-700 text-white font-semibold px-3 py-1 rounded-md flex items-center gap-1.5">
-                    <CheckCircle size={14} />
-                    Pozisyon Açıldı
-                </button>
-            );
-        }
-        
-        if (status === 'error') {
-            return (
-                 <button onClick={() => onConfirmTrade(item.data)} className="mt-2 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-1 rounded-md flex items-center gap-1.5">
-                    <XCircle size={14} />
-                    Hata! Tekrar Dene
-                </button>
-            );
-        }
-
-        return (
-            <button onClick={() => onConfirmTrade(item.data)} className="mt-2 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1 rounded-md">
-                Onayla ve Pozisyon Aç
-            </button>
-        );
+        if (status === 'loading') { return ( <button disabled className="mt-2 text-xs bg-gray-500 text-white font-semibold px-3 py-1 rounded-md flex items-center gap-1.5"><Loader2 size={14} className="animate-spin" />İşleniyor...</button> );}
+        if (status === 'success') { return ( <button disabled className="mt-2 text-xs bg-green-700 text-white font-semibold px-3 py-1 rounded-md flex items-center gap-1.5"><CheckCircle size={14} />Pozisyon Açıldı</button> );}
+        if (status === 'error') { return ( <button onClick={() => onConfirmTrade(item.data)} className="mt-2 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-1 rounded-md flex items-center gap-1.5"><XCircle size={14} />Hata! Tekrar Dene</button> );}
+        return ( <button onClick={() => onConfirmTrade(item.data)} className="mt-2 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1 rounded-md">Onayla ve Pozisyon Aç</button> );
     };
-
-    return ( 
-        <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-3xl">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-white">Tarama Sonuçları</h2>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white"><X size={24} /></button>
-            </div>
-            <div className="bg-gray-900/50 p-4 rounded-lg mb-4 grid grid-cols-3 gap-4 text-center">
-                <div><p className="text-gray-400 text-sm">Taranan Sembol</p><p className="text-xl font-bold text-white">{results?.summary?.total_scanned || 0}</p></div>
-                <div><p className="text-gray-400 text-sm">Bulunan Fırsat</p><p className="text-xl font-bold text-yellow-400">{results?.summary?.opportunities_found || 0}</p></div>
-                <div><p className="text-gray-400 text-sm">Veri Hatası</p><p className="text-xl font-bold text-red-400">{results?.summary?.data_errors || 0}</p></div>
-            </div>
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-4">
-                {results?.details?.map((item, index) => ( 
-                    <div key={index} className="p-3 bg-gray-900/50 rounded-md flex items-start gap-3">
-                        <div className="flex-shrink-0 mt-1">{getIcon(item.type)}</div>
-                        <div className="flex-grow">
-                            <p className="font-semibold text-white">{item.symbol}</p>
-                            <p className="text-sm text-gray-400">{item.message}</p>
-                            {renderActionButton(item)}
-                        </div>
-                    </div> 
-                ))}
-            </div>
-             <div className="mt-6 flex justify-end">
-                <button onClick={onClose} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-md">
-                    Kapat
-                </button>
-            </div>
-        </Modal> 
-    );
+    return ( <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-3xl"><div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white">Tarama Sonuçları</h2><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white"><X size={24} /></button></div><div className="bg-gray-900/50 p-4 rounded-lg mb-4 grid grid-cols-3 gap-4 text-center"><div><p className="text-gray-400 text-sm">Taranan Sembol</p><p className="text-xl font-bold text-white">{results?.summary?.total_scanned || 0}</p></div><div><p className="text-gray-400 text-sm">Bulunan Fırsat</p><p className="text-xl font-bold text-yellow-400">{results?.summary?.opportunities_found || 0}</p></div><div><p className="text-gray-400 text-sm">Veri Hatası</p><p className="text-xl font-bold text-red-400">{results?.summary?.data_errors || 0}</p></div></div><div className="space-y-2 max-h-[50vh] overflow-y-auto pr-4">{results?.details?.map((item, index) => ( <div key={index} className="p-3 bg-gray-900/50 rounded-md flex items-start gap-3"><div className="flex-shrink-0 mt-1">{getIcon(item.type)}</div><div className="flex-grow"><p className="font-semibold text-white">{item.symbol}</p><p className="text-sm text-gray-400">{item.message}</p>{renderActionButton(item)}</div></div> ))}</div><div className="mt-6 flex justify-end"><button onClick={onClose} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-md">Kapat</button></div></Modal> );
 };
 
-const ReanalysisResultModal = ({ result, isVisible, onClose, onConfirmClose }) => (
-    <Modal isVisible={isVisible} onClose={onClose}>
-        <h2 className="text-2xl font-bold text-white mb-4">Pozisyon Yeniden Analiz Sonucu</h2>
-        <div className="space-y-3 text-gray-300">
-            <p><span className="font-semibold text-gray-400">Sembol:</span> {result?.symbol}</p>
-            <p><span className="font-semibold text-gray-400">AI Tavsiyesi:</span> <span className={`font-bold ${result?.recommendation === 'KAPAT' ? 'text-red-400' : 'text-green-400'}`}>{result?.recommendation}</span></p>
-            <p><span className="font-semibold text-gray-400">Gerekçe:</span> {result?.reason}</p>
-        </div>
-        <div className="mt-6 flex gap-4">
-            <button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">Pozisyonu Tut</button>
-            {result?.recommendation === 'KAPAT' && <button onClick={() => onConfirmClose(result.symbol)} className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-md">Kapatmayı Onayla</button>}
-        </div>
-    </Modal>
-);
+const ReanalysisResultModal = ({ result, isVisible, onClose, onConfirmClose }) => ( <Modal isVisible={isVisible} onClose={onClose}><h2 className="text-2xl font-bold text-white mb-4">Pozisyon Yeniden Analiz Sonucu</h2><div className="space-y-3 text-gray-300"><p><span className="font-semibold text-gray-400">Sembol:</span> {result?.symbol}</p><p><span className="font-semibold text-gray-400">AI Tavsiyesi:</span> <span className={`font-bold ${result?.recommendation === 'KAPAT' ? 'text-red-400' : 'text-green-400'}`}>{result?.recommendation}</span></p><p><span className="font-semibold text-gray-400">Gerekçe:</span> {result?.reason}</p></div><div className="mt-6 flex gap-4"><button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">Pozisyonu Tut</button>{result?.recommendation === 'KAPAT' && <button onClick={() => onConfirmClose(result.symbol)} className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-md">Kapatmayı Onayla</button>}</div></Modal> );
 
 // ==============================================================================
 //  ANA DASHBOARD SAYFA BİLEŞENİ
@@ -346,10 +328,7 @@ export const DashboardPage = () => {
   const [reanalysisResult, setReanalysisResult] = useState(null);
   const [selectedTradeForChart, setSelectedTradeForChart] = useState(null);
   const [isChartModalVisible, setIsChartModalVisible] = useState(false);
-
-  // === YENİ KOD BAŞLANGICI: Tarama fırsatlarının durumunu tutmak için state ===
   const [processingOpportunities, setProcessingOpportunities] = useState({});
-  // === YENİ KOD SONU ===
 
   const { showToast, fetchData, fetchPositions, fetchSettings, saveSettings, runAnalysis, runScanner, openPosition, closePosition, refreshPnl, reanalyzePosition } = useAuth();
 
@@ -362,14 +341,10 @@ export const DashboardPage = () => {
       if (showLoading) setIsLoading(true);
       setError(null);
       try {
-          const [dashboardData, positionsData, settingsData] = await Promise.all([
-              fetchData(),
-              fetchPositions(),
-              fetchSettings()
-          ]);
+          const [dashboardData, positionsData, settingsData] = await Promise.all([ fetchData(), fetchPositions(), fetchSettings() ]);
           setStats(dashboardData.stats);
           setChartData(dashboardData.chart_data.points);
-          setTradeHistory(dashboardData.trade_history.reverse());
+          setTradeHistory(dashboardData.trade_history);
           setActivePositions(positionsData.managed_positions);
           setSettings(settingsData);
       } catch (err) {
@@ -383,15 +358,9 @@ export const DashboardPage = () => {
     loadAllData(true);
     let interval;
     if (!isSettingsModalVisible) {
-      interval = setInterval(() => {
-        loadAllData(false);
-      }, 5000);
+      interval = setInterval(() => { loadAllData(false); }, 5000);
     }
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
+    return () => { if (interval) { clearInterval(interval); }};
   }, [loadAllData, isSettingsModalVisible]);
 
   const handleAnalysis = useCallback(async ({ symbol, timeframe }) => {
@@ -406,22 +375,14 @@ export const DashboardPage = () => {
     }
   }, [showToast, runAnalysis]);
   
-  // === DEĞİŞTİRİLDİ: handleConfirmTrade artık modalı kapatmıyor ===
   const handleConfirmTrade = useCallback(async (tradeData) => {
     const symbol = tradeData.symbol;
     setProcessingOpportunities(prev => ({ ...prev, [symbol]: 'loading' }));
     showToast(`${symbol} için pozisyon açma talebi gönderiliyor...`, 'info');
-    
     try {
-      const openResult = await openPosition({ 
-          symbol: symbol, 
-          recommendation: tradeData.recommendation, 
-          timeframe: tradeData.timeframe, 
-          price: tradeData.data.price 
-      });
+      const openResult = await openPosition({ symbol: tradeData.symbol, recommendation: tradeData.recommendation, timeframe: tradeData.timeframe, price: tradeData.data.price });
       showToast(openResult.message || 'Pozisyon başarıyla açıldı!', 'success');
       setProcessingOpportunities(prev => ({ ...prev, [symbol]: 'success' }));
-      // P&L'in güncellenmesi için verileri yeniden çek
       setTimeout(() => loadAllData(), 1000);
     } catch (err) {
       showToast(err.message, 'error');
@@ -429,11 +390,10 @@ export const DashboardPage = () => {
     }
   }, [showToast, openPosition, loadAllData]);
   
-  // === DEĞİŞTİRİLDİ: handleRunScan artık işlem durumlarını temizliyor ===
   const handleRunScan = useCallback(async () => {
     setIsScanning(true);
     setScanResults(null);
-    setProcessingOpportunities({}); // Yeni tarama için işlem durumlarını sıfırla
+    setProcessingOpportunities({});
     showToast('Proaktif tarama başlatılıyor...', 'info');
     try {
         const result = await runScanner();
@@ -499,22 +459,12 @@ export const DashboardPage = () => {
 
 
   if (error && isLoading) {
-    return ( 
-        <div className="bg-gray-900 min-h-screen flex justify-center items-center text-white p-4">
-            <div className="bg-red-800/50 border border-red-700 p-8 rounded-xl text-center">
-                <h2 className="text-2xl font-bold mb-4">Bağlantı Hatası</h2>
-                <p className="text-red-200">{error}</p>
-                <button onClick={() => loadAllData(true)} className="mt-6 bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold">
-                    Yeniden Dene
-                </button>
-            </div>
-        </div> 
-    );
+    return ( <div className="bg-gray-900 min-h-screen flex justify-center items-center text-white p-4"><div className="bg-red-800/50 border border-red-700 p-8 rounded-xl text-center"><h2 className="text-2xl font-bold mb-4">Bağlantı Hatası</h2><p className="text-red-200">{error}</p><button onClick={() => loadAllData(true)} className="mt-6 bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold">Yeniden Dene</button></div></div> );
   }
 
   return (
     <>
-      <Header appVersion={settings.APP_VERSION || "3.6.0-interactive"} onSettingsClick={() => setIsSettingsModalVisible(true)} isLoading={isLoading} />
+      <Header appVersion={settings.APP_VERSION || "3.9.0-ui-revamp"} onSettingsClick={() => setIsSettingsModalVisible(true)} isLoading={isLoading} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
         <NewAnalysis onAnalysisStart={handleAnalysis} isAnalyzing={isAnalyzing} />
         <ProactiveScanner onRunScan={handleRunScan} isScanning={isScanning} />
@@ -527,42 +477,16 @@ export const DashboardPage = () => {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <PnlChart chartData={chartData} isLoading={isLoading} />
-          <ActivePositions 
-            positions={activePositions} 
-            isLoading={isLoading} 
-            onAttemptClose={handleAttemptClosePosition} 
-            onRefreshPnl={handleRefreshPnl} 
-            refreshingSymbol={refreshingSymbol} 
-            onReanalyze={handleReanalyze} 
-            analyzingSymbol={analyzingSymbol} 
-            onRowClick={handleChartModalOpen}
-          />
+          <ActivePositions positions={activePositions} isLoading={isLoading} onAttemptClose={handleAttemptClosePosition} onRefreshPnl={handleRefreshPnl} refreshingSymbol={refreshingSymbol} onReanalyze={handleReanalyze} analyzingSymbol={analyzingSymbol} onRowClick={handleChartModalOpen} />
       </div>
-      <TradeHistory 
-        history={tradeHistory} 
-        isLoading={isLoading} 
-        onRowClick={handleChartModalOpen}
-      />
+      <TradeHistory history={tradeHistory} isLoading={isLoading} onRowClick={handleChartModalOpen} />
 
       <SettingsModal settings={settings} isVisible={isSettingsModalVisible} onClose={() => setIsSettingsModalVisible(false)} onSave={handleSaveSettings} />
       <AnalysisResultModal result={analysisResult} isVisible={!!analysisResult} onClose={() => setAnalysisResult(null)} onConfirmTrade={handleConfirmTrade} />
-      
-      {/* DEĞİŞTİRİLDİ: Yeni proplar ScanResultModal'a geçiriliyor */}
-      <ScanResultModal 
-        results={scanResults} 
-        isVisible={!!scanResults} 
-        onClose={() => setScanResults(null)} 
-        onConfirmTrade={handleConfirmTrade} 
-        processingOpportunities={processingOpportunities}
-      />
-
+      <ScanResultModal results={scanResults} isVisible={!!scanResults} onClose={() => setScanResults(null)} onConfirmTrade={handleConfirmTrade} processingOpportunities={processingOpportunities} />
       <ConfirmationModal isVisible={!!confirmationDetails} onClose={() => setConfirmationDetails(null)} onConfirm={confirmationDetails?.onConfirm} title={confirmationDetails?.title}><p>{confirmationDetails?.message}</p></ConfirmationModal>
       <ReanalysisResultModal result={reanalysisResult} isVisible={!!reanalysisResult} onClose={() => setReanalysisResult(null)} onConfirmClose={handleClosePosition} />
-      <TradeChartModal 
-        isVisible={isChartModalVisible} 
-        onClose={() => setIsChartModalVisible(false)} 
-        trade={selectedTradeForChart} 
-      />
+      <TradeChartModal isVisible={isChartModalVisible} onClose={() => setIsChartModalVisible(false)} trade={selectedTradeForChart} />
     </>
   );
 };

@@ -4,12 +4,15 @@
 # varsayılan değerleri ve açıklamalarını içerir.
 
 default_settings = {
+    # === YENİ SÜRÜM BİLGİSİ ===
+    # APP_VERSION artık backend tarafından yönetiliyor ve arayüzden değiştirilemez.
+    # Bu yüzden bu listeden kaldırıldı.
+
     # === UYGULAMA & MODEL AYARLARI ===
-    "APP_VERSION": "2.1.2-db",              # Uygulamanın mevcut sürümü.
-    "GEMINI_MODEL": 'gemini-2.5-flash',     # Analiz için kullanılacak Google AI modeli.
+    "GEMINI_MODEL": 'gemini-1.5-flash',     # Analiz için kullanılacak Google AI modeli.
 
     # === CANLI İŞLEM AYARI ===
-    "LIVE_TRADING": True,                  # True ise gerçek parayla işlem yapar. GÜVENLİK İÇİN VARSAYILAN OLARAK KAPALIDIR!
+    "LIVE_TRADING": True,                  # True ise gerçek parayla işlem yapar.
 
     # === TEMEL STRATEJİ AYARLARI ===
     "USE_MTA_ANALYSIS": True,               # Manuel analizlerde Çoklu Zaman Aralığı (MTA) analizi kullanılsın mı?
@@ -25,7 +28,7 @@ default_settings = {
     # --- Stop-Loss ve Take-Profit Ayarları ---
     "USE_ATR_FOR_SLTP": True,               # SL/TP belirlemek için ATR (Average True Range) kullanılsın mı?
     "ATR_MULTIPLIER_SL": 2.0,               # Stop-Loss mesafesini belirlemek için ATR değerinin çarpılacağı katsayı.
-    "RISK_REWARD_RATIO_TP": 2.0,            # Kâr Al (Take-Profit) seviyesinin, riske (SL mesafesi) göre oranı. (Örn: 2.0 -> 1'e 2 risk/kazanç oranı).
+    "RISK_REWARD_RATIO_TP": 2.0,            # Kâr Al (Take-Profit) seviyesinin, riske (SL mesafesi) göre oranı.
 
     # --- Gelişmiş Kâr Alma Stratejileri ---
     "USE_TRAILING_STOP_LOSS": True,         # İz Süren Zarar Durdur aktif edilsin mi?
@@ -36,8 +39,8 @@ default_settings = {
 
     # === OTOMASYON & TARAYICI AYARLARI ===
     "POSITION_CHECK_INTERVAL_SECONDS": 60,  # Arka plan görevinin aktif pozisyonları kaç saniyede bir kontrol edeceği.
-    "PROACTIVE_SCAN_ENABLED": True,         # Uygulama başladığında Proaktif Tarayıcı arka plan görevi çalışsın mı?
-    "PROACTIVE_SCAN_INTERVAL_SECONDS": 1800, # Proaktif Tarayıcının kaç saniyede bir piyasayı tarayacağı (30 dakika).
+    "PROACTIVE_SCAN_ENABLED": False,        # Uygulama başladığında Proaktif Tarayıcı arka plan görevi çalışsın mı?
+    "PROACTIVE_SCAN_INTERVAL_SECONDS": 900, # Proaktif Tarayıcının kaç saniyede bir piyasayı tarayacağı (15 dakika).
     "PROACTIVE_SCAN_AUTO_CONFIRM": False,   # Tarayıcı bir fırsat bulduğunda kullanıcı onayı olmadan otomatik işlem açsın mı?
     "PROACTIVE_SCAN_IN_LOOP": True,         # Arka plan görevinin döngüsel olarak çalışıp çalışmayacağı.
     "PROACTIVE_SCAN_USE_GAINERS_LOSERS": True,# Tarama listesine "En Çok Yükselenler/Düşenler" eklensin mi?
@@ -47,8 +50,14 @@ default_settings = {
     "PROACTIVE_SCAN_ENTRY_TIMEFRAME": "15m",# Proaktif taramada giriş sinyali için kullanılacak zaman aralığı.
     "PROACTIVE_SCAN_TREND_TIMEFRAME": "4h", # Proaktif taramada ana trend için kullanılacak zaman aralığı.
     
+    # === Hacim Patlaması Taraması Ayarları ===
+    "PROACTIVE_SCAN_USE_VOLUME_SPIKE": True, # Tarama listesine 'Hacim Patlaması' yaşayanları ekle
+    "PROACTIVE_SCAN_VOLUME_TIMEFRAME": "1h", # Hacim analizi için kullanılacak zaman aralığı
+    "PROACTIVE_SCAN_VOLUME_MULTIPLIER": 5.0, # Son mumun hacmi, ortalamanın kaç katı olmalı
+    "PROACTIVE_SCAN_VOLUME_PERIOD": 24,      # Hacim ortalaması için kaç mum geriye bakılacak
+    
     # --- FİLTRELEME & BİLDİRİM ---
     "PROACTIVE_SCAN_BLACKLIST": ["SHIB", "PEPE", "MEME", "DOGE"], # Taramalarda asla analize dahil edilmeyecek coinler.
     "PROACTIVE_SCAN_WHITELIST": ["BTC", "ETH", "SOL"],           # Her tarama döngüsünde mutlaka analize dahil edilecek coinler.
-    "TELEGRAM_ENABLED": False,               # Telegram bildirimleri aktif edilsin mi?
+    "TELEGRAM_ENABLED": True,               # Telegram bildirimleri aktif edilsin mi?
 }

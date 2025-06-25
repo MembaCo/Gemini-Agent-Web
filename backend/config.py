@@ -5,7 +5,7 @@
 APP_VERSION = "2.0.1-beta" # Web tabanlı versiyon
 
 # === YAPAY ZEKA MODEL AYARI ===
-GEMINI_MODEL = 'gemini-2.5-flash'
+GEMINI_MODEL = 'gemini-1.5-flash'
 
 # === ÇOKLU ZAMAN ARALIĞI (MTA) ANALİZİ AYARLARI (MANUEL) ===
 USE_MTA_ANALYSIS = True
