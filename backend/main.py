@@ -24,6 +24,7 @@ from api import (
     positions_router,
     scanner_router,
     settings_router,
+    backtest_router,
 )
 from telegram_bot import create_telegram_app
 
@@ -85,6 +86,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router) # Koruma dışında
 # Diğer tüm rotaları koruma altına al
+api_router.include_router(backtest_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(analysis_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(positions_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(dashboard_router, dependencies=[Depends(get_current_user)])

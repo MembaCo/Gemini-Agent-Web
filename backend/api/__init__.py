@@ -10,3 +10,4 @@ from .dashboard import router as dashboard_router
 from .positions import router as positions_router
 from .scanner import router as scanner_router
 from .settings import router as settings_router
+from .backtest import router as backtest_router

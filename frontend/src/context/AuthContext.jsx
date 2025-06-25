@@ -90,6 +90,7 @@ export const AuthProvider = ({ children }) => {
     const closePosition = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/close`, { method: 'POST' }), [apiFetch]);
     const refreshPnl = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/refresh-pnl`, { method: 'POST' }), [apiFetch]);
     const reanalyzePosition = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/reanalyze`, { method: 'POST' }), [apiFetch]);
+    const runBacktest = useCallback((params) => apiFetch('/backtest/run', { method: 'POST', body: JSON.stringify(params) }), [apiFetch]);
 
 
     const value = {
@@ -111,7 +112,8 @@ export const AuthProvider = ({ children }) => {
         openPosition,
         closePosition,
         refreshPnl,
-        reanalyzePosition
+        reanalyzePosition,
+        runBacktest
     };
 
     return (
