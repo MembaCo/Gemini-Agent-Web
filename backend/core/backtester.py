@@ -1,190 +1,146 @@
-# ==============================================================================
-# File: backend/core/backtester.py
-# @author: Memba Co.
-# ==============================================================================
-import logging
-import pandas as pd
-from datetime import datetime, timedelta
+# backend/core/backtester.py
 
-from tools import exchange as exchange_tools, get_technical_indicators
-from core import agent as core_agent
-# DEĞİŞTİRİLDİ: 'settings' nesnesini doğrudan import etmek yerine, tüm modülü import ediyoruz.
-# Bu, her zaman en güncel ayarlara erişmemizi sağlar.
-from core import app_config
+import pandas as pd
+import numpy as np
+from tools.exchange import Exchange
+from tools.utils import get_config, log
+# Scanner sınıfı yerine, doğrudan modüler hale getirdiğimiz analiz fonksiyonlarını import ediyoruz.
+from .scanner import calculate_ma_signal, calculate_rsi_signal
 
 class Backtester:
-    """
-    Bir ticaret stratejisini geçmiş veriler üzerinde simüle eder ve performans
-    raporu oluşturur.
-    """
-    def __init__(self, symbol: str, timeframe: str, start_date: str, end_date: str, initial_balance: float, strategy_settings: dict):
-        self.symbol = symbol
-        self.timeframe = timeframe
-        self.start_date = start_date
-        self.end_date = end_date
-        self.initial_balance = initial_balance
-        
-        # DEĞİŞTİRİLDİ: Strateji ayarlarını alırken, doğrudan app_config.settings'e başvuruyoruz.
-        # Bu, uygulama başladığında yüklenen dolu sözlüğe erişmemizi garanti eder.
-        self.strategy = strategy_settings if strategy_settings is not None else app_config.settings
+    def __init__(self):
+        self.config = get_config()
+        self.exchange_name = self.config['exchange']['name']
+        self.exchange = Exchange(self.exchange_name)
+        # Yapılandırmadan backtest'e özel ayarları alıyoruz.
+        self.backtest_config = self.config['backtester']
+        self.initial_balance = self.backtest_config['initial_balance']
+        # Pozisyon büyüklüğü ve işlem komisyonu gibi daha gerçekçi parametreler ekliyoruz.
+        self.position_size_percent = self.backtest_config.get('position_size_percent', 1.0) # Kasanın %100'ü varsayılan
+        self.trading_fee_percent = self.backtest_config.get('trading_fee_percent', 0.1) # %0.1 komisyon varsayılan
 
-        # Simülasyon durumu
-        self.balance = initial_balance
-        self.position = None  # Sadece tek pozisyon yönetir
-        self.history = []
-        
-        # HATA DÜZELTME: Strateji sözlüğünün dolu olduğundan emin olduktan sonra loglama yapılıyor.
-        if 'RISK_PER_TRADE_PERCENT' not in self.strategy:
-             raise ValueError("Strateji ayarları yüklenemedi veya 'RISK_PER_TRADE_PERCENT' anahtarı eksik.")
-        
-        logging.info(f"Backtester başlatıldı: {symbol} ({timeframe}) / Strateji: {self.strategy['RISK_PER_TRADE_PERCENT']}% Risk")
+    def run(self, symbol, interval, start_date, end_date, preset):
+        log(f"Starting backtest for {symbol} from {start_date} to {end_date}")
 
-    def _get_historical_data(self):
-        """CCXT kullanarak geçmiş OHLCV verilerini çeker."""
-        logging.info(f"{self.symbol} için {self.start_date} - {self.end_date} arası geçmiş veriler çekiliyor...")
-        start_ts = int(datetime.strptime(self.start_date, '%Y-%m-%d').timestamp() * 1000)
-        end_date_dt = datetime.strptime(self.end_date, '%Y-%m-%d') + timedelta(days=1)
-        
-        all_bars = []
-        limit = 1000 
-        
-        while start_ts < int(end_date_dt.timestamp() * 1000):
-            try:
-                bars = exchange_tools.exchange.fetch_ohlcv(self.symbol, self.timeframe, since=start_ts, limit=limit)
-                if not bars:
-                    break
-                all_bars.extend(bars)
-                start_ts = bars[-1][0] + 1
-            except Exception as e:
-                logging.error(f"Geçmiş veri çekilirken hata: {e}")
-                break
-        
-        if not all_bars:
-            raise ValueError("Belirtilen tarih aralığı için veri bulunamadı.")
+        # 1. Veri Hazırlama ve Sinyal Üretimi (Vektörel Yaklaşım)
+        df = self.exchange.get_ohlcv(symbol, interval, start_date=start_date, end_date=end_date)
+        if df is None or df.empty:
+            log("No data found for the given period.", level='error')
+            return None
 
-        df = pd.DataFrame(all_bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df.set_index('timestamp', inplace=True)
-        df = df[df.index <= end_date_dt]
-        return df
+        # Tüm periyot için sinyalleri tek seferde, döngü olmadan hesaplıyoruz.
+        # Bu, performansı binlerce kat artırır ve lookahead bias riskini ortadan kaldırır.
+        signals = self._generate_signals(df, preset)
+        df['signal'] = signals
 
-    def _calculate_indicators(self, df: pd.DataFrame):
-        """Verilen DataFrame'e strateji için gerekli indikatörleri ekler."""
-        df.ta.rsi(length=14, append=True)
-        df.ta.adx(length=14, append=True)
-        df.ta.macd(fast=12, slow=26, signal=9, append=True)
-        df.ta.atr(length=14, append=True)
-        return df.dropna()
+        # 2. İşlem Simülasyonu
+        results = self._simulate_trades(df, symbol)
 
-    def run(self):
-        """Backtest simülasyonunu başlatır ve çalıştırır."""
-        historical_data = self._get_historical_data()
-        data_with_indicators = self._calculate_indicators(historical_data)
-        
-        logging.info(f"{len(data_with_indicators)} mum çubuğu üzerinde simülasyon başlatılıyor...")
+        # 3. Performans Metriklerini Hesaplama
+        final_results = self._calculate_performance_metrics(results, symbol, start_date, end_date)
 
-        for index, row in data_with_indicators.iterrows():
-            current_price = row['close']
-            
-            if self.position:
-                close_reason = None
-                if self.position['side'] == 'buy':
-                    if row['low'] <= self.position['stop_loss']: close_reason = "SL"
-                    elif row['high'] >= self.position['take_profit']: close_reason = "TP"
-                elif self.position['side'] == 'sell':
-                    if row['high'] >= self.position['stop_loss']: close_reason = "SL"
-                    elif row['low'] <= self.position['take_profit']: close_reason = "TP"
-                
-                if close_reason:
-                    self._close_position(close_reason, row)
-                    
-            if not self.position:
-                if row['ADX_14'] > 20:
-                    if row['RSI_14'] < 35 and row['MACD_12_26_9'] > row['MACDs_12_26_9']:
-                        self._open_position('buy', row)
-                    elif row['RSI_14'] > 65 and row['MACD_12_26_9'] < row['MACDs_12_26_9']:
-                         self._open_position('sell', row)
+        log(f"Backtest finished. Final Balance: {final_results['final_balance']:.2f}, Total PnL: {final_results['total_pnl_percent']:.2%}")
+        return final_results
 
-        return self._generate_report()
+    def _generate_signals(self, df: pd.DataFrame, preset: dict) -> pd.Series:
+        """Tüm veri çerçevesi için al/sat sinyallerini vektörel olarak üretir."""
+        final_signals = pd.Series('NEUTRAL', index=df.index)
+        
+        # Stratejileri birleştirme mantığı. Şimdilik ilk geçerli sinyali alıyoruz.
+        # Bu kısım daha karmaşık stratejiler için geliştirilebilir.
+        if 'ma_short' in preset and 'ma_long' in preset:
+            ma_signals = pd.Series(calculate_ma_signal(df['close'], preset['ma_short'], preset['ma_long']), index=df.index)
+            final_signals[ma_signals != 'NEUTRAL'] = ma_signals
 
-    def _open_position(self, side: str, candle_data: pd.Series):
-        """Sanal bir pozisyon açar."""
-        entry_price = candle_data['close']
-        atr_value = candle_data['ATRr_14']
-        
-        sl_distance = atr_value * self.strategy['ATR_MULTIPLIER_SL']
-        tp_distance = sl_distance * self.strategy['RISK_REWARD_RATIO_TP']
-        
-        if side == 'buy':
-            stop_loss = entry_price - sl_distance
-            take_profit = entry_price + tp_distance
-        else: # sell
-            stop_loss = entry_price + sl_distance
-            take_profit = entry_price - tp_distance
-            
-        risk_per_trade = self.balance * (self.strategy['RISK_PER_TRADE_PERCENT'] / 100)
-        amount = risk_per_trade / sl_distance
-        
-        self.position = {
-            "symbol": self.symbol,
-            "side": side,
-            "amount": amount,
-            "entry_price": entry_price,
-            "stop_loss": stop_loss,
-            "take_profit": take_profit,
-            "opened_at": candle_data.name
-        }
-        logging.info(f"SANAL POZİSYON AÇILDI: {side} {self.symbol} @ {entry_price:.4f} | Tarih: {candle_data.name.date()}")
+        if 'rsi_period' in preset:
+            rsi_signals = pd.Series(calculate_rsi_signal(df['close'], preset['rsi_period'], preset['rsi_overbought'], preset['rsi_oversold']), index=df.index)
+            final_signals[rsi_signals != 'NEUTRAL'] = rsi_signals
 
-    def _close_position(self, reason: str, candle_data: pd.Series):
-        """Sanal pozisyonu kapatır ve geçmişe kaydeder."""
-        close_price = self.position['stop_loss'] if reason == 'SL' else self.position['take_profit']
-        
-        pnl = 0
-        if self.position['side'] == 'buy':
-            pnl = (close_price - self.position['entry_price']) * self.position['amount']
-        else:
-            pnl = (self.position['entry_price'] - close_price) * self.position['amount']
-        
-        self.balance += pnl
-        
-        trade_log = {
-            "symbol": self.symbol,
-            "side": self.position['side'],
-            "entry_price": self.position['entry_price'],
-            "close_price": close_price,
-            "pnl": pnl,
-            "status": reason,
-            "opened_at": self.position['opened_at'].strftime('%Y-%m-%d %H:%M:%S'),
-            "closed_at": candle_data.name.strftime('%Y-%m-%d %H:%M:%S'),
-            "id": len(self.history) + 1
-        }
-        self.history.append(trade_log)
-        logging.info(f"SANAL POZİSYON KAPANDI: {reason} | PNL: {pnl:+.2f} USDT | Yeni Bakiye: {self.balance:.2f} USDT")
-        self.position = None
+        # Sinyallerin bir sonraki mumda işleme girmesi için bir periyot kaydırıyoruz (önemli!).
+        # Bu, sinyalin geldiği mumun kapanış fiyatından işlem yapmayı garantiler.
+        return final_signals.shift(1).fillna('NEUTRAL')
 
-    def _generate_report(self):
-        """Simülasyon sonunda performans raporu oluşturur."""
-        total_pnl = self.balance - self.initial_balance
-        total_trades = len(self.history)
-        winning_trades = sum(1 for t in self.history if t['pnl'] > 0)
+    def _simulate_trades(self, df: pd.DataFrame, symbol: str) -> dict:
+        """Hesaplanmış sinyallere göre işlemleri simüle eder."""
+        balance = self.initial_balance
+        position = 0  # Tutulan base currency miktarı
+        trades = []
+        balance_history = []
+
+        for timestamp, row in df.iterrows():
+            current_price = row['open'] # Bir sonraki mumun açılış fiyatından işlem yapıyoruz
+
+            # Pozisyonda değilsek ve AL sinyali geldiyse
+            if position == 0 and row['signal'] == 'BUY':
+                investment_amount = balance * (self.position_size_percent / 100.0)
+                fee = investment_amount * (self.trading_fee_percent / 100.0)
+                position = (investment_amount - fee) / current_price
+                balance -= investment_amount
+                trades.append({'symbol': symbol, 'type': 'BUY', 'price': current_price, 'amount': position, 'timestamp': timestamp.isoformat()})
+
+            # Pozisyondaysak ve SAT sinyali geldiyse
+            elif position > 0 and row['signal'] == 'SELL':
+                revenue = position * current_price
+                fee = revenue * (self.trading_fee_percent / 100.0)
+                balance += (revenue - fee)
+                trades.append({'symbol': symbol, 'type': 'SELL', 'price': current_price, 'amount': position, 'timestamp': timestamp.isoformat()})
+                position = 0
+
+            # Her günün sonunda portföy değerini kaydet
+            portfolio_value = balance + (position * current_price)
+            balance_history.append({'timestamp': timestamp, 'value': portfolio_value})
+        
+        return {'trades': trades, 'balance_history': pd.DataFrame(balance_history).set_index('timestamp')}
+
+    def _calculate_performance_metrics(self, sim_results: dict, symbol, start_date, end_date) -> dict:
+        """Simülasyon sonuçlarından detaylı performans metrikleri hesaplar."""
+        trades = sim_results['trades']
+        balance_history = sim_results['balance_history']['value']
+        
+        if not trades:
+            return {'message': 'No trades were executed.'}
+
+        final_balance = balance_history.iloc[-1]
+        total_pnl_percent = ((final_balance / self.initial_balance) - 1) * 100
+        
+        trade_pairs = []
+        for i in range(0, len(trades), 2):
+            if i + 1 < len(trades) and trades[i]['type'] == 'BUY' and trades[i+1]['type'] == 'SELL':
+                entry_trade = trades[i]
+                exit_trade = trades[i+1]
+                pnl = ((exit_trade['price'] / entry_trade['price']) - 1) * 100
+                trade_pairs.append({'entry': entry_trade, 'exit': exit_trade, 'pnl': pnl})
+        
+        total_trades = len(trade_pairs)
+        winning_trades = len([p for p in trade_pairs if p['pnl'] > 0])
         losing_trades = total_trades - winning_trades
-        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
-        
-        cumulative_pnl = 0
-        chart_points = [{'x': self.start_date, 'y': 0}]
-        for trade in sorted(self.history, key=lambda x: x['closed_at']):
-            cumulative_pnl += trade['pnl']
-            chart_points.append({'x': trade['closed_at'].split(' ')[0], 'y': round(cumulative_pnl, 2)})
+        win_rate = (winning_trades / total_trades) * 100 if total_trades > 0 else 0
+
+        # Max Drawdown Hesaplaması
+        peak = balance_history.expanding(min_periods=1).max()
+        drawdown = (balance_history - peak) / peak
+        max_drawdown = drawdown.min() * 100
+
+        # Sharpe Oranı Hesaplaması (Yıllık bazda, risksiz faiz oranı 0 varsayılarak)
+        daily_returns = balance_history.pct_change().dropna()
+        # Günlük getirilerin oynaklığı çok yüksek olabileceğinden, periyoda göre ayarlama yapmak gerekebilir.
+        # Basitlik adına günlük bazda hesaplıyoruz.
+        sharpe_ratio = (daily_returns.mean() / daily_returns.std()) * np.sqrt(365) if daily_returns.std() != 0 else 0
+
 
         return {
-            "stats": {
-                "total_pnl": total_pnl,
-                "total_trades": total_trades,
-                "win_rate": win_rate,
-                "winning_trades": winning_trades,
-                "losing_trades": losing_trades
-            },
-            "chart_data": {"points": chart_points},
-            "trade_history": self.history
+            'symbol': symbol,
+            'start_date': start_date,
+            'end_date': end_date,
+            'initial_balance': self.initial_balance,
+            'final_balance': final_balance,
+            'total_pnl_percent': total_pnl_percent,
+            'max_drawdown_percent': max_drawdown,
+            'sharpe_ratio': sharpe_ratio,
+            'total_trades': total_trades,
+            'winning_trades': winning_trades,
+            'losing_trades': losing_trades,
+            'win_rate': win_rate,
+            'trades': trades,
+            'balance_history': balance_history.to_dict()
         }
