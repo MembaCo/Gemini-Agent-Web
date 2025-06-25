@@ -6,11 +6,8 @@ import logging
 import json
 import os
 
-# Bu dosyanın 'backend' klasöründe olması gerekir.
 from config_defaults import default_settings 
 
-# Docker konteyneri içinde kalıcı veri sağlamak için '/app/data' dizinini kullanıyoruz.
-# Yerel geliştirmede ise projenin ana dizininde bir 'data' klasörü oluşturur.
 DATA_DIR = "data"
 DB_FILE = os.path.join(DATA_DIR, "trades.db")
 
@@ -21,17 +18,13 @@ def get_db_connection():
     return conn
 
 def _initialize_settings(conn):
-    """
-    Ayarlar tablosunu varsayılan değerlerle doldurur veya eksik ayarları tamamlar.
-    Bu, yeni ayarlar eklendiğinde bile sistemin sorunsuz çalışmasını sağlar.
-    """
+    """Ayarlar tablosunu varsayılan değerlerle doldurur veya eksik ayarları tamamlar."""
     logging.info("Varsayılan ayarlar veritabanı ile senkronize ediliyor...")
     cursor = conn.cursor()
     
     for key, value in default_settings.items():
         cursor.execute("SELECT key FROM settings WHERE key = ?", (key,))
         if cursor.fetchone() is None:
-            # Anahtar veritabanında yoksa, varsayılan değeri ekle
             value_type = type(value).__name__
             value_to_store = json.dumps(value) if isinstance(value, list) else str(value)
             cursor.execute(
@@ -42,11 +35,7 @@ def _initialize_settings(conn):
     conn.commit()
 
 def init_db():
-    """
-    Veritabanı tablolarını (eğer yoksa) oluşturur ve şema güncellemelerini yapar.
-    Uygulama her başladığında çalıştırılır.
-    """
-    # Veritabanı dosyası oluşturulmadan önce 'data' klasörünün var olduğundan emin ol.
+    """Veritabanı tablolarını (eğer yoksa) oluşturur ve şema güncellemelerini yapar."""
     os.makedirs(DATA_DIR, exist_ok=True)
     
     conn = get_db_connection()
@@ -55,10 +44,12 @@ def init_db():
         
         # --- TABLO OLUŞTURMA ---
         cursor.execute('CREATE TABLE IF NOT EXISTS managed_positions (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL UNIQUE, side TEXT NOT NULL, amount REAL NOT NULL, initial_amount REAL, entry_price REAL NOT NULL, timeframe TEXT NOT NULL, leverage REAL NOT NULL, stop_loss REAL NOT NULL, initial_stop_loss REAL, take_profit REAL NOT NULL, partial_tp_executed BOOLEAN DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, pnl REAL DEFAULT 0, pnl_percentage REAL DEFAULT 0)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, side TEXT NOT NULL, amount REAL NOT NULL, entry_price REAL NOT NULL, close_price REAL NOT NULL, pnl REAL NOT NULL, status TEXT NOT NULL, opened_at TIMESTAMP, closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
-        cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, type TEXT NOT NULL)')
+        
+        # === DEĞİŞTİRİLDİ: trade_history tablosuna 'timeframe' sütunu eklendi ===
+        cursor.execute('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, side TEXT NOT NULL, amount REAL NOT NULL, entry_price REAL NOT NULL, close_price REAL NOT NULL, pnl REAL NOT NULL, status TEXT NOT NULL, timeframe TEXT, opened_at TIMESTAMP, closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         
         # --- ŞEMA GÜNCELLEMELERİ (GERİYE DÖNÜK UYUMLULUK) ---
+        # managed_positions için sütun kontrolü
         cursor.execute("PRAGMA table_info(managed_positions)")
         columns = [row[1] for row in cursor.fetchall()]
         if 'pnl' not in columns:
@@ -66,11 +57,15 @@ def init_db():
         if 'pnl_percentage' not in columns:
             cursor.execute('ALTER TABLE managed_positions ADD COLUMN pnl_percentage REAL DEFAULT 0')
 
+        # === YENİ KOD: trade_history için 'timeframe' sütununu geriye dönük ekle ===
+        cursor.execute("PRAGMA table_info(trade_history)")
+        history_columns = [row[1] for row in cursor.fetchall()]
+        if 'timeframe' not in history_columns:
+            cursor.execute('ALTER TABLE trade_history ADD COLUMN timeframe TEXT')
+            logging.info("'trade_history' tablosuna 'timeframe' sütunu eklendi.")
+
         conn.commit()
-
-        # Ayarları her başlangıçta senkronize et
         _initialize_settings(conn)
-
         logging.info("Veritabanı tabloları başarıyla kontrol edildi/oluşturuldu.")
     except Exception as e:
         logging.error(f"Veritabanı başlatılırken hata oluştu: {e}", exc_info=True)
@@ -78,10 +73,8 @@ def init_db():
     finally:
         conn.close()
 
-# --- AYAR YÖNETİMİ FONKSİYONLARI ---
-
+# --- AYAR YÖNETİMİ FONKSİYONLARI (Değişiklik yok) ---
 def get_all_settings() -> dict:
-    """Tüm ayarları veritabanından okur ve doğru tiplerde bir sözlük olarak döndürür."""
     conn = get_db_connection()
     try:
         cursor = conn.execute('SELECT key, value, type FROM settings')
@@ -98,7 +91,6 @@ def get_all_settings() -> dict:
         conn.close()
 
 def update_settings(settings: dict):
-    """Gelen ayarlar sözlüğünü veritabanına kaydeder."""
     conn = get_db_connection()
     try:
         for key, value in settings.items():
@@ -110,22 +102,16 @@ def update_settings(settings: dict):
     finally:
         conn.close()
 
-# --- POZİSYON YÖNETİMİ FONKSİYONLARI ---
-
+# --- POZİSYON YÖNETİMİ FONKSİYONLARI (Değişiklik yok) ---
 def add_position(pos: dict):
-    """managed_positions tablosuna yeni bir pozisyon ekler."""
     conn = get_db_connection()
     try:
-        conn.execute(
-            'INSERT INTO managed_positions (symbol, side, amount, initial_amount, entry_price, timeframe, leverage, stop_loss, take_profit, initial_stop_loss) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (pos['symbol'], pos['side'], pos['amount'], pos['amount'], pos['entry_price'], pos['timeframe'], pos['leverage'], pos['stop_loss'], pos['take_profit'], pos['stop_loss'])
-        )
+        conn.execute('INSERT INTO managed_positions (symbol, side, amount, initial_amount, entry_price, timeframe, leverage, stop_loss, take_profit, initial_stop_loss) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (pos['symbol'], pos['side'], pos['amount'], pos['amount'], pos['entry_price'], pos['timeframe'], pos['leverage'], pos['stop_loss'], pos['take_profit'], pos['stop_loss']))
         conn.commit()
     finally:
         conn.close()
 
 def get_all_positions() -> list[dict]:
-    """Tüm aktif pozisyonları veritabanından çeker."""
     conn = get_db_connection()
     try:
         cursor = conn.execute('SELECT * FROM managed_positions ORDER BY created_at DESC')
@@ -134,7 +120,6 @@ def get_all_positions() -> list[dict]:
         conn.close()
 
 def get_position_by_symbol(symbol: str) -> dict | None:
-    """Belirtilen sembole göre tek bir aktif pozisyonu veritabanından çeker."""
     conn = get_db_connection()
     try:
         cursor = conn.execute("SELECT * FROM managed_positions WHERE symbol = ?", (symbol,))
@@ -144,7 +129,6 @@ def get_position_by_symbol(symbol: str) -> dict | None:
         conn.close()
 
 def remove_position(symbol: str) -> dict | None:
-    """Bir pozisyonu sembolüne göre aktif tablodan siler ve silinen pozisyonu döndürür."""
     conn = get_db_connection()
     try:
         pos_to_remove = get_position_by_symbol(symbol)
@@ -158,7 +142,6 @@ def remove_position(symbol: str) -> dict | None:
         conn.close()
 
 def update_position_sl(symbol: str, new_sl: float):
-    """Bir pozisyonun sadece stop-loss değerini günceller."""
     conn = get_db_connection()
     try:
         conn.execute("UPDATE managed_positions SET stop_loss = ? WHERE symbol = ?", (new_sl, symbol))
@@ -167,7 +150,6 @@ def update_position_sl(symbol: str, new_sl: float):
         conn.close()
         
 def update_position_after_partial_tp(symbol: str, new_amount: float, new_sl: float):
-    """Kısmi kâr alındıktan sonra pozisyonu günceller ve durumu işaretler."""
     conn = get_db_connection()
     try:
         conn.execute("UPDATE managed_positions SET amount = ?, stop_loss = ?, partial_tp_executed = 1 WHERE symbol = ?", (new_amount, new_sl, symbol))
@@ -176,7 +158,6 @@ def update_position_after_partial_tp(symbol: str, new_amount: float, new_sl: flo
         conn.close()
 
 def update_position_pnl(symbol: str, pnl: float, pnl_percentage: float):
-    """Bir pozisyonun PNL değerlerini günceller."""
     conn = get_db_connection()
     try:
         conn.execute("UPDATE managed_positions SET pnl = ?, pnl_percentage = ? WHERE symbol = ?", (pnl, pnl_percentage, symbol))
@@ -188,13 +169,31 @@ def update_position_pnl(symbol: str, pnl: float, pnl_percentage: float):
 
 # --- İŞLEM GEÇMİŞİ FONKSİYONLARI ---
 
+# === DEĞİŞTİRİLDİ: 'timeframe' bilgisi artık veritabanına kaydediliyor ===
 def log_trade_to_history(closed_pos: dict, close_price: float, status: str):
-    """Kapanan bir işlemi geçmiş tablosuna kaydeder."""
+    """Kapanan bir işlemi (zaman aralığı dahil) geçmiş tablosuna kaydeder."""
     conn = get_db_connection()
     try:
         initial_amount = closed_pos.get('initial_amount', closed_pos['amount'])
         pnl = (close_price - closed_pos['entry_price']) * initial_amount if closed_pos['side'] == 'buy' else (closed_pos['entry_price'] - close_price) * initial_amount
-        conn.execute('INSERT INTO trade_history (symbol, side, amount, entry_price, close_price, pnl, status, opened_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', (closed_pos['symbol'], closed_pos['side'], initial_amount, closed_pos['entry_price'], close_price, pnl, status, closed_pos['created_at']))
+        
+        # Kapanan pozisyondan timeframe'i al, yoksa 'N/A' olarak ata
+        timeframe = closed_pos.get('timeframe', 'N/A')
+        
+        conn.execute(
+            'INSERT INTO trade_history (symbol, side, amount, entry_price, close_price, pnl, status, opened_at, timeframe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            (
+                closed_pos['symbol'], 
+                closed_pos['side'], 
+                initial_amount, 
+                closed_pos['entry_price'], 
+                close_price, 
+                pnl, 
+                status, 
+                closed_pos['created_at'],
+                timeframe  # Yeni eklenen veri
+            )
+        )
         conn.commit()
     finally:
         conn.close()
@@ -203,7 +202,7 @@ def get_trade_history() -> list[dict]:
     """Tüm işlem geçmişini veritabanından çeker."""
     conn = get_db_connection()
     try:
-        cursor = conn.execute('SELECT * FROM trade_history ORDER BY closed_at ASC')
+        cursor = conn.execute('SELECT * FROM trade_history ORDER BY closed_at DESC')
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()

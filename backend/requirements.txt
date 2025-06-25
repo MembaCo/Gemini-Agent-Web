@@ -1,33 +1,24 @@
-# ==============================================================================
-# File: backend/requirements.txt
-# @author: Memba Co.
-# ==============================================================================
-# Web Framework & Server
 fastapi
 uvicorn[standard]
 apscheduler
 uvloop
 
-# LangChain & Google AI
 langchain
 langchain-google-genai
 google-generativeai
 
-# Exchange & Data Analysis
 ccxt
 pandas
-#  pandas-ta ile uyumluluğu garanti etmek için numpy versiyonu sabitlendi.
+
 numpy==1.26.4
 pandas-ta
 
-# Utilities & Telegram
 python-dotenv
 tenacity
 requests
 python-telegram-bot
 
-# Güvenlik ve Kimlik Doğrulama
-passlib[bcrypt]
+passlib==1.7.4
+bcrypt==3.2.0
 python-jose[cryptography]
 python-multipart
-jose

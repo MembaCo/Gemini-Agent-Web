@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Filler, Legend } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { Settings, X, Power, BrainCircuit, AlertTriangle, CheckCircle, Info, XCircle, Search, Play, Save, Zap, RefreshCw, Layers } from 'lucide-react';
+import { Settings, X, Power, BrainCircuit, AlertTriangle, CheckCircle, Info, XCircle, Search, Play, Save, Zap, RefreshCw, Layers, Loader2 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
+import { TradeChartModal } from './TradeChartModal';
 
 // Chart.js bileşenlerini kaydediyoruz
 ChartJS.register( CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Filler, Legend );
 
 // ==============================================================================
 //  YARDIMCI VE TEKRAR KULLANILABİLİR BİLEŞENLER
-//  Not: Bu bileşenler daha büyük projelerde kendi ayrı dosyalarına (örn: /common) taşınabilir.
 // ==============================================================================
 
 const Modal = ({ children, isVisible, onClose, maxWidth = 'max-w-md' }) => {
@@ -36,7 +36,7 @@ const Header = ({ appVersion, onSettingsClick, isLoading }) => (
   <header className="mb-8 flex justify-between items-center">
     <div>
       <h1 className="text-3xl md:text-4xl font-bold text-white">Gemini Trading Agent</h1>
-      <p className="text-gray-400 mt-1">v{appVersion} - Canlı Performans Panosu</p>
+      <p className="text-gray-400 mt-1">v{appVersion} - Canlı Performans Paneli</p>
     </div>
     <button onClick={onSettingsClick} disabled={isLoading} className="p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
       <Settings size={24} />
@@ -57,7 +57,7 @@ const PnlChart = ({ chartData, isLoading }) => {
   return ( <div className="bg-gray-800 p-4 sm:p-6 rounded-xl border border-gray-700 lg:col-span-2 h-96"><h2 className="text-lg font-semibold text-white mb-4">Kümülatif P&L Zaman Çizelgesi</h2><div className="relative h-72">{isLoading ? <div className="flex justify-center items-center h-full"><p className="text-gray-400">Grafik verileri yükleniyor...</p></div> : <Line options={options} data={data} />}</div></div> );
 };
 
-const ActivePositions = ({ positions, isLoading, onAttemptClose, onRefreshPnl, refreshingSymbol, onReanalyze, analyzingSymbol }) => (
+const ActivePositions = ({ positions, isLoading, onAttemptClose, onRefreshPnl, refreshingSymbol, onReanalyze, analyzingSymbol, onRowClick }) => (
     <div className="bg-gray-800 p-4 sm:p-6 rounded-xl border border-gray-700">
         <h2 className="text-lg font-semibold text-white mb-4">Aktif Pozisyonlar</h2>
         <div className="space-y-4 max-h-[30rem] overflow-y-auto pr-2">{isLoading ? (<p className="text-gray-400">Yükleniyor...</p>) : 
@@ -71,22 +71,24 @@ const ActivePositions = ({ positions, isLoading, onAttemptClose, onRefreshPnl, r
                     
                     return (
                         <div key={pos.id} className="p-4 rounded-lg bg-gray-900/50 border border-gray-700 group">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="font-bold text-white">{pos.symbol}</span>
-                                <span className={`px-2 py-1 text-xs font-semibold rounded ${pos.side === 'buy' ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'}`}>{pos.side.toUpperCase()}</span>
-                            </div>
-                            <div className="flex justify-between items-center mb-2 p-2 rounded-md">
-                                <div className={`text-left ${pnl >= 0 ? 'bg-green-900/50' : 'bg-red-900/50'} p-2 rounded-md flex-grow`}>
-                                    <p className={`text-lg font-bold ${pnlColor}`}>{pnl.toFixed(2)} USDT</p>
-                                    <p className={`text-xs ${pnlColor}`}>({pnlPercentage.toFixed(2)}%)</p>
+                             <div onClick={() => onRowClick(pos)} className="cursor-pointer">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-white">{pos.symbol}</span>
+                                    <span className={`px-2 py-1 text-xs font-semibold rounded ${pos.side === 'buy' ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'}`}>{pos.side.toUpperCase()}</span>
                                 </div>
-                                <button onClick={() => onRefreshPnl(pos.symbol)} disabled={isRefreshing} className="p-2 ml-3 text-gray-400 hover:text-white rounded-full hover:bg-gray-700 transition-colors disabled:cursor-not-allowed">
-                                    <RefreshCw size={16} className={isRefreshing ? "animate-spin" : ""} />
-                                </button>
-                            </div>
-                            <div className="text-xs text-gray-400 grid grid-cols-2 gap-x-4">
-                                <p>Giriş: <span className="text-gray-200">{pos.entry_price.toFixed(4)}</span></p><p>Miktar: <span className="text-gray-200">{pos.amount.toFixed(4)}</span></p>
-                                <p>SL: <span className="text-red-400">{pos.stop_loss.toFixed(4)}</span></p><p>TP: <span className="text-green-400">{pos.take_profit.toFixed(4)}</span></p>
+                                <div className="flex justify-between items-center mb-2 p-2 rounded-md">
+                                    <div className={`text-left ${pnl >= 0 ? 'bg-green-900/50' : 'bg-red-900/50'} p-2 rounded-md flex-grow`}>
+                                        <p className={`text-lg font-bold ${pnlColor}`}>{pnl.toFixed(2)} USDT</p>
+                                        <p className={`text-xs ${pnlColor}`}>({pnlPercentage.toFixed(2)}%)</p>
+                                    </div>
+                                    <button onClick={(e) => { e.stopPropagation(); onRefreshPnl(pos.symbol); }} disabled={isRefreshing} className="p-2 ml-3 text-gray-400 hover:text-white rounded-full hover:bg-gray-700 transition-colors disabled:cursor-not-allowed">
+                                        <RefreshCw size={16} className={isRefreshing ? "animate-spin" : ""} />
+                                    </button>
+                                </div>
+                                <div className="text-xs text-gray-400 grid grid-cols-2 gap-x-4">
+                                    <p>Giriş: <span className="text-gray-200">{pos.entry_price.toFixed(4)}</span></p><p>Miktar: <span className="text-gray-200">{pos.amount.toFixed(4)}</span></p>
+                                    <p>SL: <span className="text-red-400">{pos.stop_loss.toFixed(4)}</span></p><p>TP: <span className="text-green-400">{pos.take_profit.toFixed(4)}</span></p>
+                                </div>
                             </div>
                             <div className="mt-3 w-full grid grid-cols-2 gap-2 text-xs font-semibold">
                                 <button onClick={() => onReanalyze(pos.symbol)} disabled={isAnalyzing} className="flex items-center justify-center gap-2 bg-blue-600/80 hover:bg-blue-600 text-white py-1.5 rounded-md disabled:bg-gray-600">
@@ -102,17 +104,54 @@ const ActivePositions = ({ positions, isLoading, onAttemptClose, onRefreshPnl, r
             ) : (<p className="text-gray-400">Aktif pozisyon bulunmuyor.</p>)}</div></div>
 );
 
-const TradeHistory = ({ history, isLoading }) => ( <div className="bg-gray-800 p-4 sm:p-6 rounded-xl border border-gray-700"><h2 className="text-lg font-semibold text-white mb-4">İşlem Geçmişi</h2><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-xs text-gray-400 uppercase bg-gray-700/50"><tr><th scope="col" className="px-4 py-3">Sembol</th><th scope="col" className="px-4 py-3">Yön</th><th scope="col" className="px-4 py-3">Giriş</th><th scope="col" className="px-4 py-3">Kapanış</th><th scope="col" className="px-4 py-3">P&L (USDT)</th><th scope="col" className="px-4 py-3">Durum</th><th scope="col" className="px-4 py-3">Kapanış Zamanı</th></tr></thead><tbody>
-      {isLoading ? <tr><td colSpan="7" className="text-center p-8 text-gray-400">Yükleniyor...</td></tr> : history.length > 0 ? history.map(trade => ( <tr key={trade.id} className="border-b border-gray-700 hover:bg-gray-900/30"><td className="px-4 py-3 font-medium text-white">{trade.symbol}</td><td className="px-4 py-3">{trade.side.toUpperCase()}</td><td className="px-4 py-3">{trade.entry_price.toFixed(4)}</td><td className="px-4 py-3">{trade.close_price.toFixed(4)}</td><td className={`px-4 py-3 font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{trade.pnl.toFixed(2)}</td><td className="px-4 py-3">{trade.status}</td><td className="px-4 py-3 text-gray-400">{new Date(trade.closed_at).toLocaleString('tr-TR')}</td></tr>)) : <tr><td colSpan="7" className="text-center p-8 text-gray-400">İşlem geçmişi bulunmuyor.</td></tr>}</tbody></table></div></div> );
+const TradeHistory = ({ history, isLoading, onRowClick }) => ( 
+    <div className="bg-gray-800 p-4 sm:p-6 rounded-xl border border-gray-700">
+        <h2 className="text-lg font-semibold text-white mb-4">İşlem Geçmişi</h2>
+        <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+                <thead className="text-xs text-gray-400 uppercase bg-gray-700/50">
+                    <tr>
+                        <th scope="col" className="px-4 py-3">Sembol</th>
+                        <th scope="col" className="px-4 py-3">Yön</th>
+                        <th scope="col" className="px-4 py-3">Giriş</th>
+                        <th scope="col" className="px-4 py-3">Çıkış</th>
+                        <th scope="col" className="px-4 py-3">P&L (USDT)</th>
+                        <th scope="col" className="px-4 py-3">Durum</th>
+                        <th scope="col" className="px-4 py-3">Kapanış Zamanı</th>
+                    </tr>
+                </thead>
+                <tbody> 
+                    {isLoading ? (
+                        <tr><td colSpan="7" className="text-center p-8 text-gray-400">Yükleniyor...</td></tr> 
+                    ) : history.length > 0 ? (
+                        history.map(trade => ( 
+                            <tr key={trade.id} onClick={() => onRowClick(trade)} className="border-b border-gray-700 hover:bg-gray-900/50 cursor-pointer">
+                                <td className="px-4 py-3 font-medium text-white">{trade.symbol}</td>
+                                <td className="px-4 py-3">{trade.side.toUpperCase()}</td>
+                                <td className="px-4 py-3">{trade.entry_price.toFixed(4)}</td>
+                                <td className="px-4 py-3">{trade.close_price ? trade.close_price.toFixed(4) : '-'}</td>
+                                <td className={`px-4 py-3 font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{trade.pnl.toFixed(2)}</td>
+                                <td className="px-4 py-3">{trade.status}</td>
+                                <td className="px-4 py-3 text-gray-400">{new Date(trade.closed_at).toLocaleString('tr-TR')}</td>
+                            </tr>
+                        )) 
+                    ) : (
+                        <tr><td colSpan="7" className="text-center p-8 text-gray-400">İşlem geçmişi bulunmuyor.</td></tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+    </div> 
+);
 
 const NewAnalysis = ({ onAnalysisStart, isAnalyzing }) => {
   const [symbol, setSymbol] = useState('');
   const [timeframe, setTimeframe] = useState('15m');
   const handleSubmit = (e) => { e.preventDefault(); if (symbol.trim()) { onAnalysisStart({ symbol, timeframe }); } };
-  return ( <div className="bg-gray-800 p-6 rounded-xl border border-gray-700"><h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><BrainCircuit size={20} />Yeni Analiz Başlat</h2><form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4"><input type="text" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="Sembol Girin (örn: BTC)" className="flex-grow bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" /><select value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="5m">5 Dakika</option><option value="15m">15 Dakika</option><option value="1h">1 Saat</option><option value="4h">4 Saat</option></select><button type="submit" disabled={isAnalyzing || !symbol.trim()} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed flex justify-center items-center">{isAnalyzing ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : 'Analiz Et'}</button></form></div> );
+  return ( <div className="bg-gray-800 p-6 rounded-xl border border-gray-700"><h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><BrainCircuit size={20} />Yeni Analiz Başlat</h2><form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4"><input type="text" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="Sembol girin (örn: BTC)" className="flex-grow bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" /><select value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="5m">5 Dakika</option><option value="15m">15 Dakika</option><option value="1h">1 Saat</option><option value="4h">4 Saat</option></select><button type="submit" disabled={isAnalyzing || !symbol.trim()} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed flex justify-center items-center">{isAnalyzing ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : 'Analiz Et'}</button></form></div> );
 };
 
-const ProactiveScanner = ({ onRunScan, isScanning }) => ( <div className="bg-gray-800 p-6 rounded-xl border border-gray-700"><div className="flex justify-between items-center"><h2 className="text-lg font-semibold text-white flex items-center gap-2"><Search size={20}/>Proaktif Tarayıcı (Fırsat Avcısı)</h2><button onClick={onRunScan} disabled={isScanning} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed flex justify-center items-center gap-2">{isScanning ? <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> Taranıyor...</> : <><Play size={16}/> Şimdi Tara</>}</button></div><p className="text-sm text-gray-400 mt-2">Piyasayı potansiyel ticaret fırsatları için manuel olarak tarar. Otomatik tarama backend'de çalışmaya devam eder.</p></div> );
+const ProactiveScanner = ({ onRunScan, isScanning }) => ( <div className="bg-gray-800 p-6 rounded-xl border border-gray-700"><div className="flex justify-between items-center"><h2 className="text-lg font-semibold text-white flex items-center gap-2"><Search size={20}/>Proaktif Tarayıcı (Fırsat Avcısı)</h2><button onClick={onRunScan} disabled={isScanning} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2 rounded-md disabled:bg-gray-600 disabled:cursor-not-allowed flex justify-center items-center gap-2">{isScanning ? <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> Taranıyor...</> : <><Play size={16}/> Şimdi Tara</>}</button></div><p className="text-sm text-gray-400 mt-2">Piyasayı potansiyel ticaret fırsatları için manuel olarak tarar. Otomatik tarama arka planda çalışmaya devam eder.</p></div> );
 
 // --- MODAL BİLEŞENLERİ ---
 
@@ -165,7 +204,7 @@ const AnalysisResultModal = ({ result, isVisible, onClose, onConfirmTrade }) => 
             <div className="space-y-3 text-gray-300">
                 <p><span className="font-semibold text-gray-400">Sembol:</span> {result?.symbol}</p>
                 <p><span className="font-semibold text-gray-400">Tavsiye:</span> <span className={`font-bold ${isTradeable ? (result?.recommendation === 'AL' ? 'text-green-400' : 'text-red-400') : 'text-yellow-400'}`}>{result?.recommendation}</span></p>
-                <p><span className="font-semibold text-gray-400">Neden:</span> {result?.reason}</p>
+                <p><span className="font-semibold text-gray-400">Gerekçe:</span> {result?.reason}</p>
             </div>
             <div className="mt-6 flex gap-4">
                 <button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">Kapat</button>
@@ -186,7 +225,8 @@ const ConfirmationModal = ({ isVisible, onClose, onConfirm, title, children }) =
     </Modal> 
 );
 
-const ScanResultModal = ({ results, isVisible, onClose, onConfirmTrade }) => {
+// === DEĞİŞTİRİLDİ: ScanResultModal güncellendi ===
+const ScanResultModal = ({ results, isVisible, onClose, onConfirmTrade, processingOpportunities }) => {
     const getIcon = (type) => {
         switch (type) {
             case 'success': return <CheckCircle className="text-green-400" size={18} />;
@@ -196,6 +236,46 @@ const ScanResultModal = ({ results, isVisible, onClose, onConfirmTrade }) => {
             default: return <Info className="text-blue-400" size={18} />;
         }
     };
+
+    const renderActionButton = (item) => {
+        if (item.type !== 'opportunity') return null;
+
+        const status = processingOpportunities[item.data.symbol];
+
+        if (status === 'loading') {
+            return (
+                <button disabled className="mt-2 text-xs bg-gray-500 text-white font-semibold px-3 py-1 rounded-md flex items-center gap-1.5">
+                    <Loader2 size={14} className="animate-spin" />
+                    İşleniyor...
+                </button>
+            );
+        }
+
+        if (status === 'success') {
+            return (
+                <button disabled className="mt-2 text-xs bg-green-700 text-white font-semibold px-3 py-1 rounded-md flex items-center gap-1.5">
+                    <CheckCircle size={14} />
+                    Pozisyon Açıldı
+                </button>
+            );
+        }
+        
+        if (status === 'error') {
+            return (
+                 <button onClick={() => onConfirmTrade(item.data)} className="mt-2 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold px-3 py-1 rounded-md flex items-center gap-1.5">
+                    <XCircle size={14} />
+                    Hata! Tekrar Dene
+                </button>
+            );
+        }
+
+        return (
+            <button onClick={() => onConfirmTrade(item.data)} className="mt-2 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1 rounded-md">
+                Onayla ve Pozisyon Aç
+            </button>
+        );
+    };
+
     return ( 
         <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-3xl">
             <div className="flex justify-between items-center mb-6">
@@ -214,12 +294,15 @@ const ScanResultModal = ({ results, isVisible, onClose, onConfirmTrade }) => {
                         <div className="flex-grow">
                             <p className="font-semibold text-white">{item.symbol}</p>
                             <p className="text-sm text-gray-400">{item.message}</p>
-                            {item.type === 'opportunity' && ( 
-                                <button onClick={() => onConfirmTrade(item.data)} className="mt-2 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1 rounded-md">Onayla ve Pozisyon Aç</button> 
-                            )}
+                            {renderActionButton(item)}
                         </div>
                     </div> 
                 ))}
+            </div>
+             <div className="mt-6 flex justify-end">
+                <button onClick={onClose} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-md">
+                    Kapat
+                </button>
             </div>
         </Modal> 
     );
@@ -261,8 +344,19 @@ export const DashboardPage = () => {
   const [refreshingSymbol, setRefreshingSymbol] = useState(null);
   const [analyzingSymbol, setAnalyzingSymbol] = useState(null);
   const [reanalysisResult, setReanalysisResult] = useState(null);
+  const [selectedTradeForChart, setSelectedTradeForChart] = useState(null);
+  const [isChartModalVisible, setIsChartModalVisible] = useState(false);
+
+  // === YENİ KOD BAŞLANGICI: Tarama fırsatlarının durumunu tutmak için state ===
+  const [processingOpportunities, setProcessingOpportunities] = useState({});
+  // === YENİ KOD SONU ===
 
   const { showToast, fetchData, fetchPositions, fetchSettings, saveSettings, runAnalysis, runScanner, openPosition, closePosition, refreshPnl, reanalyzePosition } = useAuth();
+
+  const handleChartModalOpen = (trade) => {
+    setSelectedTradeForChart(trade);
+    setIsChartModalVisible(true);
+  };
 
   const loadAllData = useCallback(async (showLoading = false) => {
       if (showLoading) setIsLoading(true);
@@ -286,23 +380,19 @@ export const DashboardPage = () => {
   }, [fetchData, fetchPositions, fetchSettings]);
 
   useEffect(() => {
-    loadAllData(true); // İlk yükleme
-
+    loadAllData(true);
     let interval;
-    // Sadece ayarlar modalı kapalıyken periyodik yenilemeyi başlat.
     if (!isSettingsModalVisible) {
       interval = setInterval(() => {
         loadAllData(false);
       }, 5000);
     }
-    
-    // Bileşen unmount olduğunda veya modal açıldığında interval'ı temizle.
     return () => {
       if (interval) {
         clearInterval(interval);
       }
     };
-  }, [loadAllData, isSettingsModalVisible]); // isSettingsModalVisible'ı dependency array'e ekliyoruz.
+  }, [loadAllData, isSettingsModalVisible]);
 
   const handleAnalysis = useCallback(async ({ symbol, timeframe }) => {
     setIsAnalyzing(true);
@@ -316,22 +406,34 @@ export const DashboardPage = () => {
     }
   }, [showToast, runAnalysis]);
   
-  const handleConfirmTrade = useCallback(async (result) => {
-    setAnalysisResult(null);
-    setScanResults(null);
-    showToast('Pozisyon açma isteği gönderiliyor...', 'info');
+  // === DEĞİŞTİRİLDİ: handleConfirmTrade artık modalı kapatmıyor ===
+  const handleConfirmTrade = useCallback(async (tradeData) => {
+    const symbol = tradeData.symbol;
+    setProcessingOpportunities(prev => ({ ...prev, [symbol]: 'loading' }));
+    showToast(`${symbol} için pozisyon açma talebi gönderiliyor...`, 'info');
+    
     try {
-      const openResult = await openPosition({ symbol: result.symbol, recommendation: result.recommendation, timeframe: result.timeframe, price: result.data.price });
+      const openResult = await openPosition({ 
+          symbol: symbol, 
+          recommendation: tradeData.recommendation, 
+          timeframe: tradeData.timeframe, 
+          price: tradeData.data.price 
+      });
       showToast(openResult.message || 'Pozisyon başarıyla açıldı!', 'success');
-      loadAllData();
+      setProcessingOpportunities(prev => ({ ...prev, [symbol]: 'success' }));
+      // P&L'in güncellenmesi için verileri yeniden çek
+      setTimeout(() => loadAllData(), 1000);
     } catch (err) {
       showToast(err.message, 'error');
+      setProcessingOpportunities(prev => ({ ...prev, [symbol]: 'error' }));
     }
   }, [showToast, openPosition, loadAllData]);
   
+  // === DEĞİŞTİRİLDİ: handleRunScan artık işlem durumlarını temizliyor ===
   const handleRunScan = useCallback(async () => {
     setIsScanning(true);
     setScanResults(null);
+    setProcessingOpportunities({}); // Yeni tarama için işlem durumlarını sıfırla
     showToast('Proaktif tarama başlatılıyor...', 'info');
     try {
         const result = await runScanner();
@@ -412,7 +514,7 @@ export const DashboardPage = () => {
 
   return (
     <>
-      <Header appVersion={settings.APP_VERSION || "3.4.0-refactor"} onSettingsClick={() => setIsSettingsModalVisible(true)} isLoading={isLoading} />
+      <Header appVersion={settings.APP_VERSION || "3.6.0-interactive"} onSettingsClick={() => setIsSettingsModalVisible(true)} isLoading={isLoading} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
         <NewAnalysis onAnalysisStart={handleAnalysis} isAnalyzing={isAnalyzing} />
         <ProactiveScanner onRunScan={handleRunScan} isScanning={isScanning} />
@@ -425,15 +527,42 @@ export const DashboardPage = () => {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           <PnlChart chartData={chartData} isLoading={isLoading} />
-          <ActivePositions positions={activePositions} isLoading={isLoading} onAttemptClose={handleAttemptClosePosition} onRefreshPnl={handleRefreshPnl} refreshingSymbol={refreshingSymbol} onReanalyze={handleReanalyze} analyzingSymbol={analyzingSymbol} />
+          <ActivePositions 
+            positions={activePositions} 
+            isLoading={isLoading} 
+            onAttemptClose={handleAttemptClosePosition} 
+            onRefreshPnl={handleRefreshPnl} 
+            refreshingSymbol={refreshingSymbol} 
+            onReanalyze={handleReanalyze} 
+            analyzingSymbol={analyzingSymbol} 
+            onRowClick={handleChartModalOpen}
+          />
       </div>
-      <TradeHistory history={tradeHistory} isLoading={isLoading} />
+      <TradeHistory 
+        history={tradeHistory} 
+        isLoading={isLoading} 
+        onRowClick={handleChartModalOpen}
+      />
 
       <SettingsModal settings={settings} isVisible={isSettingsModalVisible} onClose={() => setIsSettingsModalVisible(false)} onSave={handleSaveSettings} />
       <AnalysisResultModal result={analysisResult} isVisible={!!analysisResult} onClose={() => setAnalysisResult(null)} onConfirmTrade={handleConfirmTrade} />
-      <ScanResultModal results={scanResults} isVisible={!!scanResults} onClose={() => setScanResults(null)} onConfirmTrade={handleConfirmTrade} />
+      
+      {/* DEĞİŞTİRİLDİ: Yeni proplar ScanResultModal'a geçiriliyor */}
+      <ScanResultModal 
+        results={scanResults} 
+        isVisible={!!scanResults} 
+        onClose={() => setScanResults(null)} 
+        onConfirmTrade={handleConfirmTrade} 
+        processingOpportunities={processingOpportunities}
+      />
+
       <ConfirmationModal isVisible={!!confirmationDetails} onClose={() => setConfirmationDetails(null)} onConfirm={confirmationDetails?.onConfirm} title={confirmationDetails?.title}><p>{confirmationDetails?.message}</p></ConfirmationModal>
       <ReanalysisResultModal result={reanalysisResult} isVisible={!!reanalysisResult} onClose={() => setReanalysisResult(null)} onConfirmClose={handleClosePosition} />
+      <TradeChartModal 
+        isVisible={isChartModalVisible} 
+        onClose={() => setIsChartModalVisible(false)} 
+        trade={selectedTradeForChart} 
+      />
     </>
   );
 };

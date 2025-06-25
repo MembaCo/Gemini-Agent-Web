@@ -1,12 +1,64 @@
-# core/position_manager.py
+# ==============================================================================
+# File: backend/core/position_manager.py
 # @author: Memba Co.
-
+# ==============================================================================
 import logging
 import database
 from core import app_config
-from tools import _fetch_price_natively, update_stop_loss_order, execute_trade_order
+from tools import _fetch_price_natively, update_stop_loss_order, execute_trade_order, get_open_positions_from_exchange
 from core.trader import close_existing_trade, TradeException
 from notifications import send_telegram_message, format_partial_tp_message
+
+# === YENİ FONKSİYON BAŞLANGICI ===
+def sync_positions_on_startup():
+    """
+    Uygulama başlangıcında çalışarak borsadaki açık pozisyonlarla yerel
+    veritabanını senkronize eder.
+    """
+    logging.info(">>> Başlangıçta Pozisyon Senkronizasyonu Başlatılıyor...")
+    try:
+        # 1. Hem borsadan hem de veritabanından mevcut pozisyonları çek
+        exchange_positions_raw = get_open_positions_from_exchange()
+        db_positions_raw = database.get_all_positions()
+
+        if not exchange_positions_raw and not db_positions_raw:
+            logging.info("Borsada ve veritabanında yönetilecek pozisyon bulunamadı. Senkronizasyon tamamlandı.")
+            return
+
+        # 2. Sembol listelerini karşılaştırma için hazırla
+        # CCXT'den gelen semboller 'BTCUSDT' formatındadır.
+        exchange_symbols = {p['info']['symbol'] for p in exchange_positions_raw}
+        # Veritabanındaki semboller 'BTC/USDT' formatındadır. Karşılaştırma için formatı eşitliyoruz.
+        db_symbols = {p['symbol'].replace('/', '') for p in db_positions_raw}
+
+        # 3. Veritabanında olan ama borsada olmayanları bul (Hayalet Pozisyonlar)
+        # Bot kapalıyken pozisyon borsada manuel kapatılmış olabilir.
+        ghost_positions = db_symbols - exchange_symbols
+        for symbol_ticker in ghost_positions:
+            # Veritabanından silmek için standart formata geri çevir ('BTC/USDT')
+            symbol_unified = f"{symbol_ticker.replace('USDT', '')}/USDT"
+            logging.warning(f"Hayalet Pozisyon Bulundu: '{symbol_unified}' veritabanında var ama borsada yok. Veritabanından kaldırılıyor...")
+            database.remove_position(symbol_unified)
+            send_telegram_message(f"⚠️ **Senkronizasyon Uyarısı** ⚠️\n`{symbol_unified}` pozisyonu veritabanında bulunuyordu ancak borsada kapalıydı. Veritabanı temizlendi.")
+
+        # 4. Borsada olan ama veritabanında olmayanları bul (Yönetilmeyen Pozisyonlar)
+        # Bot kapalıyken borsada manuel pozisyon açılmış olabilir.
+        unmanaged_positions = exchange_symbols - db_symbols
+        for symbol_ticker in unmanaged_positions:
+            symbol_unified = f"{symbol_ticker.replace('USDT', '')}/USDT"
+            logging.warning(f"Yönetilmeyen Pozisyon Bulundu: '{symbol_unified}' borsada açık ama veritabanında kayıtlı değil. Lütfen manuel kontrol edin.")
+            send_telegram_message(f"⚠️ **Senkronizasyon Uyarısı** ⚠️\n`{symbol_unified}` pozisyonu borsada açık ancak bot tarafından yönetilmiyor. Lütfen manuel olarak kontrol edin.")
+        
+        total_synced = len(ghost_positions) + len(unmanaged_positions)
+        if total_synced > 0:
+            logging.info(f"<<< Pozisyon senkronizasyonu tamamlandı. {len(ghost_positions)} hayalet pozisyon temizlendi, {len(unmanaged_positions)} yönetilmeyen pozisyon raporlandı.")
+        else:
+            logging.info("<<< Tüm pozisyonlar senkronize. Herhangi bir tutarsızlık bulunamadı.")
+
+    except Exception as e:
+        logging.error(f"Başlangıçta pozisyon senkronizasyonu sırasında kritik hata: {e}", exc_info=True)
+# === YENİ FONKSİYON SONU ===
+
 
 async def check_all_managed_positions():
     """

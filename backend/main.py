@@ -16,15 +16,16 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import database
 from tools import exchange as exchange_tools
 from core import agent, scanner, position_manager, app_config
-from core.security import get_current_user # Gerekirse diye import edelim
+from core.security import get_current_user
 from api import (
     analysis_router,
-    auth_router, # Auth router'ı dahil etmeyi unutmayalım
+    auth_router,
+    charts_router,
     dashboard_router,
     positions_router,
     scanner_router,
     settings_router,
-    backtest_router,
+    backtest_router
 )
 from telegram_bot import create_telegram_app
 
@@ -34,15 +35,21 @@ scheduler = AsyncIOScheduler()
 async def lifespan(app: FastAPI):
     logging.info("Uygulama başlatılıyor (lifespan)...")
     
-    # === YENİ KOD BAŞLANGICI: Scheduler'ı state'e ekle ===
     app.state.scheduler = scheduler
-    # === YENİ KOD SONU ===
 
     database.init_db()
     app_config.load_config()
     
     exchange_tools.initialize_exchange(app_config.settings.get('DEFAULT_MARKET_TYPE'))
     agent.initialize_agent()
+    
+    # === YENİ KOD BAŞLANGICI ===
+    # Borsa bağlantısı kurulduktan sonra pozisyonları senkronize et
+    try:
+        position_manager.sync_positions_on_startup()
+    except Exception as e:
+        logging.critical(f"Uygulama başlangıcında pozisyon senkronizasyonu başarısız oldu: {e}")
+    # === YENİ KOD SONU ===
     
     telegram_app = create_telegram_app()
     if telegram_app:
@@ -80,13 +87,14 @@ async def lifespan(app: FastAPI):
         logging.info("Telegram botu durduruldu.")
     scheduler.shutdown()
 
-app = FastAPI(title="Gemini Trading Agent API", version="3.3.1-hotfix", lifespan=lifespan)
+# --- Geri kalan kodlar aynı kalır ---
+app = FastAPI(title="Gemini Trading Agent API", version="3.7.0-sync", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router) # Koruma dışında
-# Diğer tüm rotaları koruma altına al
 api_router.include_router(backtest_router, dependencies=[Depends(get_current_user)])
+api_router.include_router(charts_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(analysis_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(positions_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(dashboard_router, dependencies=[Depends(get_current_user)])
