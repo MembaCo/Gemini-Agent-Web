@@ -10,20 +10,27 @@ router = APIRouter(
     tags=["Scanner"]
 )
 
-@router.post("/run", summary="Proaktif tarayıcıyı manuel olarak tetikle ve sonuçları al")
+# === YENİ ENDPOINT ===
+@router.post("/candidates", summary="AI analizi için potansiyel adayları tara ve listele")
+async def get_candidates():
+    """
+    Tüm kaynaklardan potansiyel sembolleri toplar, ön filtreden geçirir
+    ve sadece analize hazır olanları bir liste olarak döndürür.
+    Bu endpoint, AI analizi YAPMAZ.
+    """
+    logging.info("API: Tarayıcı aday listesi için istek alındı.")
+    try:
+        candidates = scanner.get_scan_candidates()
+        return candidates
+    except Exception as e:
+        logging.error(f"Aday tarama API'sinde kritik hata: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Adaylar taranırken bir sunucu hatası oluştu: {str(e)}")
+
+# Eski endpoint'i kaldırabilir veya bırakabiliriz. Şimdilik bırakalım.
+@router.post("/run", summary="DEPRECATED: Proaktif tarayıcıyı manuel olarak tetikle")
 async def run_manual_scan():
     """
-    Proaktif tarama döngüsünü çalıştırır ve taramanın sonuçlarını
-    doğrudan JSON olarak döndürür. Bu, frontend'in sonuçları bir modalda
-    göstermesini sağlar.
+    Bu endpoint artık kullanımdan kaldırılmıştır. Lütfen /candidates kullanın.
     """
-    logging.info("API: Manuel proaktif tarama isteği alındı.")
-    try:
-        # DÜZELTME: Fonksiyonu doğrudan çağırıp sonucunu alıyoruz.
-        # Arka plan görevi yerine, sonucun dönmesini bekliyoruz.
-        scan_results = scanner.execute_single_scan_cycle()
-        return scan_results
-    except Exception as e:
-        logging.error(f"Tarama API'sinde kritik hata: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Tarama sırasında bir sunucu hatası oluştu: {str(e)}")
+    return scanner.execute_single_scan_cycle()
 

@@ -95,6 +95,8 @@ export const AuthProvider = ({ children }) => {
     const fetchPresets = useCallback(() => apiFetch('/presets/'), [apiFetch]);
     const savePreset = useCallback((preset) => apiFetch('/presets/', { method: 'POST', body: JSON.stringify(preset) }), [apiFetch]);
     const deletePreset = useCallback((presetId) => apiFetch(`/presets/${presetId}`, { method: 'DELETE' }), [apiFetch]);
+    const runScannerCandidates = useCallback(() => apiFetch('/scanner/candidates', { method: 'POST' }), [apiFetch]);
+
     
 
     const value = {
@@ -121,7 +123,8 @@ export const AuthProvider = ({ children }) => {
         fetchChartData,
         fetchPresets,
         savePreset,
-        deletePreset
+        deletePreset,
+        runScannerCandidates
     };
 
     return (

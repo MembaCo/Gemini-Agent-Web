@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import { LoginPage } from './components/LoginPage';
 import { DashboardPage } from './components/DashboardPage';
-import { BacktestingPage } from './components/BacktestingPage'; // Önceki adımda oluşturmuştuk
+import { BacktestingPage } from './components/BacktestingPage';
+import { ScannerPage } from './components/ScannerPage'; // YENİ
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
-// Toast bileşenini global kullanım için burada tutmak mantıklı.
 const Toast = ({ message, type, onClose }) => {
   if (!message) return null;
   const icons = { success: <CheckCircle className="text-green-400" />, error: <XCircle className="text-red-400" />, warning: <AlertTriangle className="text-yellow-400" />, info: <Info className="text-blue-400" /> };
@@ -18,12 +18,10 @@ const Toast = ({ message, type, onClose }) => {
   );
 };
 
-
 export default function App() {
     const { isAuthenticated, toast, setToast } = useAuth();
-    const [view, setView] = useState('dashboard'); // 'dashboard' veya 'backtesting'
+    const [view, setView] = useState('dashboard');
 
-    // Eğer kullanıcı giriş yapmamışsa, login sayfasını göster.
     if (!isAuthenticated) {
         return (
             <>
@@ -33,32 +31,27 @@ export default function App() {
         );
     }
 
-    // Kullanıcı giriş yapmışsa, ana uygulama arayüzünü göster.
     return (
         <div className="bg-gray-900 min-h-screen text-gray-300 font-sans">
             <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
                 {/* Navigasyon Çubuğu */}
                 <div className="mb-6 flex items-center border-b border-gray-700">
-                    <button 
-                        onClick={() => setView('dashboard')} 
-                        className={`px-4 py-2 text-sm font-medium transition-colors ${view === 'dashboard' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}
-                    >
+                    <button onClick={() => setView('dashboard')} className={`px-4 py-2 text-sm font-medium ${view === 'dashboard' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}>
                         Dashboard
                     </button>
-                    <button 
-                        onClick={() => setView('backtesting')} 
-                        className={`px-4 py-2 text-sm font-medium transition-colors ${view === 'backtesting' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}
-                    >
+                     <button onClick={() => setView('scanner')} className={`px-4 py-2 text-sm font-medium ${view === 'scanner' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}>
+                        Fırsat Tarayıcı
+                    </button>
+                    <button onClick={() => setView('backtesting')} className={`px-4 py-2 text-sm font-medium ${view === 'backtesting' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}>
                         Backtesting
                     </button>
                 </div>
 
-                {/* Mevcut görünüme göre ilgili sayfayı render et */}
+                {/* Görünüm Değiştirici */}
                 {view === 'dashboard' && <DashboardPage />}
+                {view === 'scanner' && <ScannerPage />}
                 {view === 'backtesting' && <BacktestingPage />}
             </div>
-
-            {/* Global toast bildirimleri */}
             <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
         </div>
     );
