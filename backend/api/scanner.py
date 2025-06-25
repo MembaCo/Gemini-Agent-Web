@@ -31,13 +31,19 @@ async def get_saved_candidates():
 async def run_new_scan_and_save_candidates():
     """
     Piyasayı yeni fırsatlar için tarar, sonuçları veritabanına kaydeder
-    (öncekileri silerek) ve yeni listeyi döndürür.
+    (öncekileri silerek) ve yeni listeyi ve toplam taranan sayısını döndürür.
     """
     logging.info("API: Yeni tarama ve kaydetme isteği alındı.")
     try:
-        candidates = await scanner.get_scan_candidates()
-        database.save_scanner_candidates(candidates)
-        return candidates
+        # scan_result artık {"total_scanned": X, "found_candidates": [...]} formatında bir sözlük
+        scan_result = await scanner.get_scan_candidates()
+        
+        # Veritabanına sadece bulunan adaylar listesini kaydet
+        database.save_scanner_candidates(scan_result["found_candidates"])
+        
+        # Frontend'e tüm sonucu (hem listeyi hem sayıyı) gönder
+        return scan_result
+        
     except Exception as e:
         logging.error(f"Yeni tarama API'sinde kritik hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Adaylar taranırken bir sunucu hatası oluştu: {str(e)}")

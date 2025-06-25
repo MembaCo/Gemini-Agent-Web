@@ -1,120 +1,151 @@
 # ==============================================================================
 # File: backend/core/scanner.py
 # @author: Memba Co.
+#
+# --- NİHAİ SÜRÜM 3.0: GÜVENİLİR VERİ KAYNAĞI VE GELİŞMİŞ TEŞHİS ---
+# Bu sürüm, API'den veri çekme adımını try-except bloğu içine alarak ve
+# sonuçları detaylı loglayarak olası bağlantı veya yetki sorunlarının
+# kaynağını net bir şekilde ortaya çıkarmayı hedefler.
 # ==============================================================================
 import logging
-import time
-import asyncio  # YENİ: Eşzamanlı işlemler için asyncio kütüphanesi eklendi
+import asyncio
+import os
+import ccxt.async_support as ccxt_async
+import pandas as pd
+import pandas_ta as ta
+
 import database
 from core import app_config
-from tools import get_top_gainers_losers, get_volume_spikes, _get_unified_symbol, get_technical_indicators
-from core import agent as core_agent
-from core.trader import open_new_trade, TradeException
-from notifications import send_telegram_message
-from google.api_core import exceptions as google_exceptions
-from core import cache_manager
+from tools import _get_unified_symbol
+from tools.utils import str_to_bool
 
-BLACKLISTED_SYMBOLS = {}
+# === ASENKRON YARDIMCI FONKSİYONLAR (Değişiklik yok) ===
+def _create_async_exchange():
+    use_testnet = str_to_bool(os.getenv("USE_TESTNET", "False"))
+    api_key = os.getenv("BINANCE_API_KEY")
+    secret_key = os.getenv("BINANCE_SECRET_KEY")
+    config_data = { "apiKey": api_key, "secret": secret_key, "options": {"defaultType": app_config.settings.get('DEFAULT_MARKET_TYPE', 'future').lower()}, "enableRateLimit": True, 'timeout': 20000, }
+    exchange = ccxt_async.binance(config_data)
+    if use_testnet and app_config.settings.get('DEFAULT_MARKET_TYPE') == 'future': exchange.set_sandbox_mode(True)
+    return exchange
 
-
-# YENİ: Tek bir sembolü asenkron olarak analiz eden yardımcı fonksiyon
-async def _get_and_filter_candidate(symbol: str, entry_tf: str, source: str):
-    """
-    Tek bir sembol için verileri çeker, ön filtreden geçirir ve
-    uygunsa aday verisini döndürür.
-    """
+async def _check_volume_spike_async(symbol: str, exchange, settings: dict):
     try:
-        # Bu fonksiyon paralel çalıştığı için cache'i burada doğrudan kullanmıyoruz,
-        # çünkü her interaktif taramada en taze veriyi almak istiyoruz.
-        # `get_technical_indicators` içindeki kendi cache mekanizması hala geçerlidir.
-        indicators_result = get_technical_indicators.invoke({"symbol_and_timeframe": f"{symbol},{entry_tf}"})
-
-        if indicators_result.get("status") != "success":
-            return None
-
-        indicators_data = indicators_result["data"]
-        adx = indicators_data.get('adx', 0)
-        rsi = indicators_data.get('rsi', 50)
-
-        # Stratejiye göre filtreleme koşulları
-        is_trending = adx > 20
-        is_rsi_potential = (rsi > 65 or rsi < 35)
-
-        if is_trending and is_rsi_potential:
-            return {
-                "symbol": symbol,
-                "source": source, # Kaynak bilgisi artık korunuyor
-                "indicators": {
-                    "RSI": round(rsi, 2),
-                    "ADX": round(adx, 2),
-                },
-                "timeframe": entry_tf
-            }
+        timeframe, period, multiplier = settings['PROACTIVE_SCAN_VOLUME_TIMEFRAME'], settings['PROACTIVE_SCAN_VOLUME_PERIOD'], settings['PROACTIVE_SCAN_VOLUME_MULTIPLIER']
+        bars = await exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=period + 1)
+        if len(bars) < period + 1: return None
+        df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
+        if len(df) < period + 1: return None
+        last_volume = df['volume'].iloc[-1]; average_volume = df['volume'].iloc[-period-1:-1].mean()
+        if pd.isna(last_volume) or pd.isna(average_volume) or average_volume == 0: return None
+        if last_volume > average_volume * multiplier:
+            return {"symbol": _get_unified_symbol(symbol), "source": f"Hacim Patlaması ({last_volume / average_volume:.1f}x)"}
         return None
-    except Exception:
-        # Tek bir semboldeki hata ana döngüyü kırmamalı
+    except Exception: return None
+
+async def _fetch_and_filter_candidate_async(symbol: str, timeframe: str, source: str, exchange):
+    try:
+        bars = await exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=200)
+        if not bars or len(bars) < 100: return None
+        df = pd.DataFrame(bars, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        for col in ['open', 'high', 'low', 'close', 'volume']: df[col] = pd.to_numeric(df[col], errors='coerce')
+        df.dropna(inplace=True);
+        if len(df) < 100: return None
+        df.ta.rsi(length=14, append=True); df.ta.adx(length=14, append=True)
+        df.dropna(inplace=True);
+        if df.empty: return None
+        last = df.iloc[-1]; rsi, adx = last.get('RSI_14'), last.get('ADX_14')
+        if rsi is None or adx is None or pd.isna(rsi) or pd.isna(adx): return None
+        if adx > 20 and (rsi < 35 or rsi > 65):
+            return {"symbol": symbol, "source": source, "indicators": {"RSI": round(rsi, 2), "ADX": round(adx, 2)}, "timeframe": timeframe}
         return None
+    except Exception: return None
 
-
-# === GÜNCELLENDİ: Fonksiyon artık asenkron ve tamamen optimize edilmiş ===
-async def get_scan_candidates():
-    """
-    Tüm kaynaklardan potansiyel işlem adaylarını toplar, ön filtreden geçirir
-    ve analiz için hazır bir liste olarak DÖNER. API istekleri paralelleştirilmiştir.
-    """
+# === ANA TARAYICI MANTIĞI (GELİŞMİŞ TEŞHİS İLE) ===
+async def get_scan_candidates() -> dict:
     app_config.load_config()
-    logging.info("--- 🔎 OPTİMİZE Aday Tarama Döngüsü Başlatılıyor 🔎 ---")
+    settings = app_config.settings
+    logging.info("--- 🧠 Kapsamlı ve Paralel Aday Tarama Döngüsü Başlatılıyor (v3.0 Teşhis Modu) 🧠 ---")
 
-    # 1. Adım: Aday kaynaklarını topla (Bu bölüm senkron ve hızlıdır)
-    open_symbols = {p['symbol'] for p in database.get_all_positions()}
-    static_blacklist = {_get_unified_symbol(s) for s in app_config.settings.get('PROACTIVE_SCAN_BLACKLIST', [])}
-    
-    # Hangi sembolün hangi kaynaktan geldiğini takip etmek için bir sözlük
-    potential_candidates = {}
+    potential_symbols = {}
+    for symbol in settings.get('PROACTIVE_SCAN_WHITELIST', []):
+        potential_symbols[_get_unified_symbol(symbol)] = 'Whitelist'
+    logging.info(f"Strateji 1 (Whitelist): {len(potential_symbols)} aday eklendi.")
 
-    # Kaynak 1: Beyaz Liste
-    for s in [_get_unified_symbol(s) for s in app_config.settings.get('PROACTIVE_SCAN_WHITELIST', [])]:
-        potential_candidates[s] = 'Whitelist'
-
-    # Kaynak 2: En Çok Yükselenler/Düşenler
-    if app_config.settings.get('PROACTIVE_SCAN_USE_GAINERS_LOSERS'):
+    exchange = _create_async_exchange()
+    try:
+        # === YENİ: GELİŞMİŞ HATA YAKALAMA VE TEŞHİS ===
+        all_tickers_list = []
         try:
-            for item in get_top_gainers_losers(top_n=app_config.settings.get('PROACTIVE_SCAN_TOP_N', 10), min_volume_usdt=app_config.settings.get('PROACTIVE_SCAN_MIN_VOLUME_USDT', 1000000)):
-                if item['symbol'] not in potential_candidates:
-                    potential_candidates[item['symbol']] = 'Gainer/Loser'
+            logging.info(">>> [TEŞHİS] Binance Vadeli İşlemler API'sinden (fapiPublicGetTicker24hr) veri çekiliyor...")
+            all_tickers_list = await exchange.fapiPublicGetTicker24hr()
+            logging.info(f">>> [TEŞHİS] API çağrısı başarılı. {len(all_tickers_list)} adet ticker verisi alındı.")
+            
+            if not all_tickers_list:
+                logging.critical(">>> [TEŞHİS] KRİTİK HATA: Binance'ten ticker verisi çekilemedi veya boş bir liste döndü! Lütfen `.env` dosyasındaki API anahtarlarınızın VADELİ İŞLEMLER (FUTURES) için 'Okumayı Etkinleştir' iznine sahip olduğundan emin olun.")
+                return {"total_scanned": 0, "found_candidates": []}
+            
+            logging.info(f"Gelen ilk veri örneği: {all_tickers_list[0]}")
+
         except Exception as e:
-            logging.error(f"Yükselen/Düşenler listesi alınamadı: {e}")
+            logging.critical(f">>> [TEŞHİS] KRİTİK HATA: `fapiPublicGetTicker24hr` çağrılırken bir istisna oluştu: {e}", exc_info=True)
+            logging.critical("Bu hata genellikle API anahtarlarının Vadeli İşlemler (Futures) için yetkili olmamasından veya IP kısıtlamalarından kaynaklanır.")
+            await exchange.close()
+            return {"total_scanned": 0, "found_candidates": []}
 
-    # Kaynak 3: Hacim Patlaması
-    if app_config.settings.get('PROACTIVE_SCAN_USE_VOLUME_SPIKE'):
-        try:
-            for item in get_volume_spikes(timeframe=app_config.settings.get('PROACTIVE_SCAN_VOLUME_TIMEFRAME', '1h'), period=app_config.settings.get('PROACTIVE_SCAN_VOLUME_PERIOD', 24), multiplier=app_config.settings.get('PROACTIVE_SCAN_VOLUME_MULTIPLIER', 5.0), min_volume_usdt=app_config.settings.get('PROACTIVE_SCAN_MIN_VOLUME_USDT', 1000000)):
-                if item['symbol'] not in potential_candidates:
-                    potential_candidates[item['symbol']] = f"Hacim Patlaması ({item['spike_ratio']:.1f}x)"
-        except Exception as e:
-            logging.error(f"Hacim patlaması listesi alınamadı: {e}", exc_info=True)
-    
-    # Filtrelenmiş son tarama listesini oluştur
-    final_scan_list = {s: src for s, src in potential_candidates.items() if s not in open_symbols and s not in static_blacklist}
-    logging.info(f"Toplam {len(final_scan_list)} benzersiz aday bulundu. Paralel ön filtre uygulanıyor...")
+        min_volume = settings.get('PROACTIVE_SCAN_MIN_VOLUME_USDT', 1000000)
+        volume_filtered_tickers = [t for t in all_tickers_list if float(t.get('quoteVolume', 0)) > min_volume]
+        
+        if not volume_filtered_tickers and all_tickers_list:
+            logging.warning(f"Minimum ${min_volume:,.0f} hacim filtresini geçen coin bulunamadı!")
+            all_tickers_list.sort(key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
+            volume_filtered_tickers = all_tickers_list[:20]
+            logging.info(f"YEDEK MEKANİZMA AKTİF: En yüksek hacimli {len(volume_filtered_tickers)} coin işleme alınıyor.")
+        
+        # ... (Geri kalan kod öncekiyle aynı, değişiklik yok)
+        if settings.get('PROACTIVE_SCAN_USE_GAINERS_LOSERS'):
+            top_n = settings.get('PROACTIVE_SCAN_TOP_N', 10)
+            sorted_by_change = sorted(volume_filtered_tickers, key=lambda x: float(x.get('priceChangePercent', 0)), reverse=True)
+            added_count = 0
+            for ticker in sorted_by_change[:top_n] + sorted_by_change[-top_n:]:
+                unified_symbol = _get_unified_symbol(ticker['symbol'])
+                if unified_symbol not in potential_symbols:
+                    potential_symbols[unified_symbol] = 'Gainer/Loser'
+                    added_count += 1
+            logging.info(f"Strateji 2 (Gainer/Loser): {added_count} yeni aday eklendi.")
+        
+        if settings.get('PROACTIVE_SCAN_USE_VOLUME_SPIKE'):
+            logging.info(f"Strateji 3 (Volume Spike): {len(volume_filtered_tickers)} sembol üzerinde hacim patlaması kontrolü başlatıldı...")
+            spike_tasks = [_check_volume_spike_async(t['symbol'], exchange, settings) for t in volume_filtered_tickers]
+            spike_results = await asyncio.gather(*spike_tasks)
+            added_count = 0
+            for result in spike_results:
+                if result and result['symbol'] not in potential_symbols:
+                    potential_symbols[result['symbol']] = result['source']
+                    added_count += 1
+            logging.info(f"Strateji 3 (Volume Spike): {added_count} yeni aday eklendi.")
 
-    # 2. Adım: Tüm adayları paralel olarak filtrele
-    entry_tf = app_config.settings.get('PROACTIVE_SCAN_ENTRY_TIMEFRAME', '15m')
-    
-    # Her bir sembol için asenkron görevler oluştur
-    tasks = [_get_and_filter_candidate(symbol, entry_tf, source) for symbol, source in final_scan_list.items()]
-    
-    # Tüm görevleri eşzamanlı olarak çalıştır ve sonuçları bekle
-    results = await asyncio.gather(*tasks)
-    
-    # `None` olmayan (yani filtreden geçen) sonuçları topla
-    ready_candidates = [res for res in results if res is not None]
+        open_positions = {p['symbol'] for p in database.get_all_positions()}
+        blacklist = {_get_unified_symbol(s) for s in settings.get('PROACTIVE_SCAN_BLACKLIST', [])}
+        final_symbols_to_scan = {s: src for s, src in potential_symbols.items() if s not in open_positions and s not in blacklist}
+        
+        total_symbols_to_scan_count = len(final_symbols_to_scan)
+        logging.info(f"Filtreleme Sonrası: Toplam {total_symbols_to_scan_count} benzersiz aday üzerinde son analiz yapılacak.")
 
-    logging.info(f"--- ✅ OPTİMİZE Aday Tarama Tamamlandı: {len(ready_candidates)} aday analize hazır. ---")
-    return ready_candidates
+        if total_symbols_to_scan_count > 0:
+            timeframe = settings.get('PROACTIVE_SCAN_ENTRY_TIMEFRAME', '15m')
+            filter_tasks = [_fetch_and_filter_candidate_async(symbol, timeframe, source, exchange) for symbol, source in final_symbols_to_scan.items()]
+            results = await asyncio.gather(*filter_tasks)
+            ready_candidates = [res for res in results if res is not None]
+        else:
+            ready_candidates = []
 
+    except Exception as e:
+        logging.error(f"Kapsamlı tarama sırasında genel hata: {e}", exc_info=True)
+        ready_candidates, total_symbols_to_scan_count = [], 0
+    finally:
+        await exchange.close()
 
-def execute_single_scan_cycle():
-    """Bu fonksiyon artık kullanılmıyor, ancak uyumluluk için bırakıldı."""
-    logging.warning("execute_single_scan_cycle fonksiyonu artık kullanımdan kaldırılmıştır. Lütfen yeni interaktif tarayıcıyı kullanın.")
-    return {"summary": {}, "details": [{"type":"warning", "symbol":"SYSTEM", "message": "Bu tarama yöntemi kullanımdan kaldırıldı."}]}
+    logging.info(f"--- ✅ Kapsamlı Tarama Tamamlandı: {len(ready_candidates)} aday analize hazır. ---")
+    return { "total_scanned": total_symbols_to_scan_count, "found_candidates": ready_candidates }

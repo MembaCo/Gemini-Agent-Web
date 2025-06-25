@@ -46,34 +46,49 @@ def initialize_agent():
         raise e
 
 def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, entry_indicators: dict, trend_timeframe: str, trend_indicators: dict) -> str:
-    """Multi-Timeframe Analysis (MTA) için prompt oluşturur."""
+    """
+    Multi-Timeframe Analysis (MTA) için GELİŞTİRİLMİŞ prompt oluşturur.
+    Bu yeni sürüm, AI'nın sinyal güçlerini tartmasını ve trend dönüşlerini yorumlamasını teşvik eder.
+    """
     entry_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in entry_indicators.items()])
     trend_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in trend_indicators.items()])
+    
     return f"""
-    Sen, Çoklu Zaman Aralığı (MTA) konusunda uzmanlaşmış profesyonel bir trading analistisin.
+    Sen, Çoklu Zaman Aralığı (MTA) konusunda uzmanlaşmış, tecrübeli bir trading analistisin.
     Görevin, sana sunulan iki farklı zaman aralığına ait veriyi birleştirerek kapsamlı bir analiz yapmak ve net bir ticaret kararı ('AL', 'SAT' veya 'BEKLE') vermektir.
-    ## ANALİZ KURALLARI:
-    1.  **Önce Trendi Belirle:** İlk olarak '{trend_timeframe}' zaman aralığındaki verilere bakarak ana trendin yönünü (Yükseliş, Düşüş, Yönsüz) belirle. ADX > 25 ise trendin güçlü olduğunu unutma.
-    2.  **Sinyali Trend ile Teyit Et:** Ardından '{entry_timeframe}' zaman aralığındaki giriş sinyalini analiz et.
-        - Eğer ana trend Yükseliş ise ve giriş sinyali 'AL' ise, bu güçlü bir teyittir. Kararın 'AL' olabilir.
-        - Eğer ana trend Düşüş ise ve giriş sinyali 'SAT' ise, bu güçlü bir teyittir. Kararın 'SAT' olabilir.
-        - **Eğer trend ile sinyal arasında bir uyumsuzluk varsa (örn: Trend yükselirken giriş sinyali 'SAT' ise) VEYA ana trend 'Yönsüz' ise, kararını 'BEKLE' olarak ver.**
-    3.  **Gerekçeni Açıkla:** Kararının arkasındaki mantığı, her iki zaman aralığından da bahsederek kısaca açıkla.
+
+    ## ANALİZ FELSEFEN:
+    1.  **Önce Ana Trendi Anla:** '{trend_timeframe}' zaman aralığındaki verilere bakarak ana trendin yönünü ve GÜCÜNÜ (ADX değerine göre) belirle.
+        - ADX < 20: Yönsüz piyasa.
+        - ADX 20-25: Zayıf trend.
+        - ADX > 25: Güçlü trend.
+    2.  **Giriş Sinyalini Değerlendir:** '{entry_timeframe}' zaman aralığındaki sinyali ve GÜCÜNÜ (ADX ve RSI seviyelerine göre) analiz et.
+        - RSI < 30 veya > 70: Güçlü aşırı alım/satım sinyali.
+        - ADX > 40: Çok güçlü bir momentum göstergesi.
+    3.  **Sinyalleri Birlikte Yorumla (En Önemli Adım):**
+        - **Teyit Durumu:** Eğer ana trend ile giriş sinyali aynı yöndeyse (örn: 4s yükseliş, 15m AL sinyali), bu güçlü bir teyittir. Kararın net bir şekilde 'AL' veya 'SAT' olabilir.
+        - **Çelişki Durumu (SENİN UZMANLIĞIN BURADA):** Eğer ana trend ile giriş sinyali arasında bir uyumsuzluk varsa, sadece 'BEKLE' deyip geçme. Sinyallerin gücünü tart.
+            - **Örnek 1:** Eğer '{trend_timeframe}' trendi ZAYIF (örn: ADX=23) ama '{entry_timeframe}' sinyali ÇOK GÜÇLÜ ise (örn: ADX=50 ve RSI=19), bu bir **TREND DÖNÜŞÜ** potansiyeli olabilir. Bu durumda, ana trendin aksine bir pozisyon önerisinde bulunabilirsin ('AL' veya 'SAT'). Gerekçende bunu mutlaka belirt.
+            - **Örnek 2:** Eğer her iki sinyal de zayıf veya belirsizse, o zaman 'BEKLE' kararı en doğrusudur.
+    
     ## SAĞLANAN VERİLER:
     - Sembol: {symbol}
     - Anlık Fiyat: {price}
+
     ### Ana Trend Verileri ({trend_timeframe})
     {trend_indicator_text}
+
     ### Giriş Sinyali Verileri ({entry_timeframe})
     {entry_indicator_text}
+
     ## İSTENEN JSON ÇIKTI FORMATI:
-    Kararını ve gerekçeni, aşağıda formatı verilen JSON çıktısı olarak sun. Başka hiçbir açıklama yapma.
+    Kararını ve yukarıdaki felsefeye dayalı detaylı gerekçeni, aşağıda formatı verilen JSON çıktısı olarak sun. Başka hiçbir açıklama yapma.
     ```json
     {{
       "symbol": "{symbol}",
       "timeframe": "{entry_timeframe}",
       "recommendation": "KARARIN (AL, SAT, veya BEKLE)",
-      "reason": "MTA analizine dayalı kısa ve net gerekçen. (Örn: '4h trendi yükselişteyken, 15m'de RSI ve MACD AL sinyali üretti.')",
+      "reason": "MTA analizine dayalı detaylı ve nitelikli gerekçen. Sinyal güçlerinden ve olası trend dönüşünden bahset.",
       "analysis_type": "MTA",
       "trend_timeframe": "{trend_timeframe}",
       "data": {{
