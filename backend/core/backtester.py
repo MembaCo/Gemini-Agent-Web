@@ -8,7 +8,9 @@ from datetime import datetime, timedelta
 
 from tools import exchange as exchange_tools, get_technical_indicators
 from core import agent as core_agent
-from core.app_config import settings as current_settings
+# DEĞİŞTİRİLDİ: 'settings' nesnesini doğrudan import etmek yerine, tüm modülü import ediyoruz.
+# Bu, her zaman en güncel ayarlara erişmemizi sağlar.
+from core import app_config
 
 class Backtester:
     """
@@ -21,26 +23,30 @@ class Backtester:
         self.start_date = start_date
         self.end_date = end_date
         self.initial_balance = initial_balance
-        self.strategy = strategy_settings if strategy_settings else current_settings
+        
+        # DEĞİŞTİRİLDİ: Strateji ayarlarını alırken, doğrudan app_config.settings'e başvuruyoruz.
+        # Bu, uygulama başladığında yüklenen dolu sözlüğe erişmemizi garanti eder.
+        self.strategy = strategy_settings if strategy_settings is not None else app_config.settings
 
         # Simülasyon durumu
         self.balance = initial_balance
         self.position = None  # Sadece tek pozisyon yönetir
         self.history = []
         
+        # HATA DÜZELTME: Strateji sözlüğünün dolu olduğundan emin olduktan sonra loglama yapılıyor.
+        if 'RISK_PER_TRADE_PERCENT' not in self.strategy:
+             raise ValueError("Strateji ayarları yüklenemedi veya 'RISK_PER_TRADE_PERCENT' anahtarı eksik.")
+        
         logging.info(f"Backtester başlatıldı: {symbol} ({timeframe}) / Strateji: {self.strategy['RISK_PER_TRADE_PERCENT']}% Risk")
 
     def _get_historical_data(self):
         """CCXT kullanarak geçmiş OHLCV verilerini çeker."""
         logging.info(f"{self.symbol} için {self.start_date} - {self.end_date} arası geçmiş veriler çekiliyor...")
-        # Tarih string'lerini datetime objelerine dönüştür
         start_ts = int(datetime.strptime(self.start_date, '%Y-%m-%d').timestamp() * 1000)
-        
-        # CCXT'nin son mumu da alması için bitiş tarihine bir gün ekliyoruz.
         end_date_dt = datetime.strptime(self.end_date, '%Y-%m-%d') + timedelta(days=1)
         
         all_bars = []
-        limit = 1000 # CCXT'nin tek seferde çekebileceği maksimum mum sayısı
+        limit = 1000 
         
         while start_ts < int(end_date_dt.timestamp() * 1000):
             try:
@@ -59,7 +65,6 @@ class Backtester:
         df = pd.DataFrame(all_bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)
-        # Bitiş tarihine göre filtrele
         df = df[df.index <= end_date_dt]
         return df
 
@@ -81,7 +86,6 @@ class Backtester:
         for index, row in data_with_indicators.iterrows():
             current_price = row['close']
             
-            # Pozisyon varsa, SL/TP kontrolü yap
             if self.position:
                 close_reason = None
                 if self.position['side'] == 'buy':
@@ -94,12 +98,8 @@ class Backtester:
                 if close_reason:
                     self._close_position(close_reason, row)
                     
-            # Pozisyon yoksa, yeni pozisyon açma sinyali ara
             if not self.position:
-                # Gerçek AI analizi yerine indikatörlere dayalı basit bir strateji
-                # UZUN VADELİ NOT: Burası `core_agent` çağrısı ile değiştirilebilir
-                # ancak bu, testi çok yavaşlatır ve maliyetli olur.
-                if row['ADX_14'] > 20: # Trend varsa
+                if row['ADX_14'] > 20:
                     if row['RSI_14'] < 35 and row['MACD_12_26_9'] > row['MACDs_12_26_9']:
                         self._open_position('buy', row)
                     elif row['RSI_14'] > 65 and row['MACD_12_26_9'] < row['MACDs_12_26_9']:
@@ -132,7 +132,7 @@ class Backtester:
             "entry_price": entry_price,
             "stop_loss": stop_loss,
             "take_profit": take_profit,
-            "opened_at": candle_data.name # index (timestamp)
+            "opened_at": candle_data.name
         }
         logging.info(f"SANAL POZİSYON AÇILDI: {side} {self.symbol} @ {entry_price:.4f} | Tarih: {candle_data.name.date()}")
 
@@ -157,7 +157,7 @@ class Backtester:
             "status": reason,
             "opened_at": self.position['opened_at'].strftime('%Y-%m-%d %H:%M:%S'),
             "closed_at": candle_data.name.strftime('%Y-%m-%d %H:%M:%S'),
-            "id": len(self.history) + 1 # Benzersiz bir id
+            "id": len(self.history) + 1
         }
         self.history.append(trade_log)
         logging.info(f"SANAL POZİSYON KAPANDI: {reason} | PNL: {pnl:+.2f} USDT | Yeni Bakiye: {self.balance:.2f} USDT")
@@ -171,7 +171,6 @@ class Backtester:
         losing_trades = total_trades - winning_trades
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
         
-        # PNL Grafiği Verisi
         cumulative_pnl = 0
         chart_points = [{'x': self.start_date, 'y': 0}]
         for trade in sorted(self.history, key=lambda x: x['closed_at']):
