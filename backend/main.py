@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
     logging.info("Arka plan görevleri (Scheduler) ayarlanıyor...")
     scheduler.add_job(position_manager.check_all_managed_positions, "interval", seconds=app_config.settings.get('POSITION_CHECK_INTERVAL_SECONDS', 60), id="position_checker_job")
     if app_config.settings.get('PROACTIVE_SCAN_ENABLED'):
-        scheduler.add_job(scanner.execute_single_scan_cycle, "interval", seconds=app_config.settings.get('PROACTIVE_SCAN_INTERVAL_SECONDS', 900), id="scanner_job")
+        scheduler.add_job(scanner.execute_single_scan_cycle, "interval", seconds=app_config.settings.get('PROACTIVE_SCAN_INTERVAL_SECONDS', 900), id="scanner_job", max_instances=1)
     
     scheduler.start()
     logging.info("Uygulama başlangıcı tamamlandı. API kullanıma hazır.")
