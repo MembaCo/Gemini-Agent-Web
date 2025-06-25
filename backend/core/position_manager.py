@@ -2,16 +2,16 @@
 # File: backend/core/position_manager.py
 # @author: Memba Co.
 #
-# --- YENİLİK ---
-# sync_positions_on_startup fonksiyonu artık sadece uyarı vermekle kalmıyor,
-# aynı zamanda borsada bulunan ve veritabanında olmayan pozisyonları,
-# güncel ayarlara göre yeni SL/TP hesaplayarak otomatik olarak
-# veritabanına ekliyor ve yönetime alıyor.
+# --- Nihai Sürüm (v2.1) ---
+# Bu sürüm, başlangıçta pozisyonları senkronize ederken borsadan gelen verideki
+# sayısal alanların (leverage, entryPrice vb.) 'None' (boş) olabileceği
+# durumları ele alacak şekilde daha dayanıklı hale getirilmiştir. Bu, TypeError
+# hatasını önler ve pozisyonların sorunsuz içe aktarılmasını sağlar.
 # ==============================================================================
 import logging
 import database
 from core import app_config
-# Gerekli yeni importlar
+# Gerekli importlar
 from tools import (
     _fetch_price_natively, update_stop_loss_order, execute_trade_order, 
     get_open_positions_from_exchange, get_atr_value, _get_unified_symbol
@@ -50,16 +50,27 @@ def sync_positions_on_startup():
         for symbol_base in unmanaged_symbols:
             pos_data = exchange_positions[symbol_base]
             symbol_unified = _get_unified_symbol(pos_data['info']['symbol'])
-            logging.info(f"Yönetilmeyen Pozisyon Bulundu: '{symbol_unified}'. Sisteme entegre ediliyor...")
-
+            
             try:
-                # Pozisyonun temel bilgilerini al
-                entry_price = float(pos_data.get('entryPrice', 0))
-                amount = float(pos_data.get('contracts', 0))
-                leverage = float(pos_data.get('leverage', 1))
+                # Güvenli veri dönüşümü: Değerlerin 'None' gelme ihtimaline karşı kontrol
+                entry_price_raw = pos_data.get('entryPrice')
+                amount_raw = pos_data.get('contracts')
+                leverage_raw = pos_data.get('leverage')
+
+                # Değer None ise, varsayılan bir değer ata; değilse float'a çevir.
+                entry_price = float(entry_price_raw) if entry_price_raw is not None else 0.0
+                amount = float(amount_raw) if amount_raw is not None else 0.0
+                leverage = float(leverage_raw) if leverage_raw is not None else 1.0
+
+                # Eğer temel bilgiler (giriş fiyatı veya miktar) alınamazsa bu pozisyonu atla
+                if entry_price == 0.0 or amount == 0.0:
+                    logging.error(f"'{symbol_unified}' pozisyonu için giriş fiyatı veya miktar alınamadı, içe aktarılamıyor.")
+                    continue
+                
+                logging.info(f"Yönetilmeyen Pozisyon Bulundu: '{symbol_unified}'. Sisteme entegre ediliyor...")
+
                 side = 'buy' if pos_data.get('side') == 'long' else 'sell'
                 
-                # Bu pozisyon için yeni ve güvenli SL/TP hesapla
                 # Zaman aralığı bilinmediği için varsayılan bir değer kullanıyoruz
                 timeframe = '15m'
                 atr_result = get_atr_value(f"{symbol_unified},{timeframe}")
@@ -80,13 +91,12 @@ def sync_positions_on_startup():
                     "side": side,
                     "amount": amount,
                     "entry_price": entry_price,
-                    "timeframe": timeframe, # Varsayılan olarak ayarlandı
+                    "timeframe": timeframe,
                     "leverage": leverage,
                     "stop_loss": stop_loss_price,
                     "take_profit": take_profit_price,
                 }
                 
-                # Veritabanına ekle
                 database.add_position(position_to_add)
                 logging.info(f"✅ BAŞARILI: '{symbol_unified}' pozisyonu içe aktarıldı ve yönetime alındı.")
                 send_telegram_message(f"✅ **Pozisyon İçe Aktarıldı** ✅\n`{symbol_unified}` pozisyonu borsada açık bulunduğu için yönetime alındı.")
@@ -96,7 +106,7 @@ def sync_positions_on_startup():
 
         total_synced = len(ghost_symbols) + len(unmanaged_symbols)
         if total_synced > 0:
-            logging.info(f"<<< Pozisyon senkronizasyonu tamamlandı. {len(ghost_symbols)} hayalet pozisyon temizlendi, {len(unmanaged_symbols)} pozisyon içe aktarıldı.")
+            logging.info(f"<<< Pozisyon senkronizasyonu tamamlandı. {len(ghost_symbols)} hayalet pozisyon temizlendi, {len(unmanaged_symbols)} pozisyon içe aktarıldı/denendi.")
         else:
             logging.info("<<< Tüm pozisyonlar senkronize. Herhangi bir tutarsızlık bulunamadı.")
 
@@ -106,8 +116,7 @@ def sync_positions_on_startup():
 async def check_all_managed_positions():
     """
     Tüm yönetilen pozisyonları periyodik olarak kontrol eder.
-    Her döngünün başında en güncel ayarları veritabanından okur.
-    PNL durumunu hesaplar ve veritabanını günceller.
+    PNL durumunu hesaplar ve SL/TP, Trailing SL gibi stratejileri uygular.
     """
     app_config.load_config()
     logging.info("Aktif pozisyonlar kontrol ediliyor...")
