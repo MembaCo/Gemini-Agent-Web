@@ -12,6 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from api import auth_router # Yeni auth router'ı import et
+from core.security import get_current_user
+from fastapi import Depends
 
 import database
 from tools import exchange as exchange_tools
@@ -45,9 +48,24 @@ async def lifespan(app: FastAPI):
         logging.info("Telegram botu başlatıldı ve komutları dinliyor.")
     
     logging.info("Arka plan görevleri (Scheduler) ayarlanıyor...")
-    scheduler.add_job(position_manager.check_all_managed_positions, "interval", seconds=app_config.settings.get('POSITION_CHECK_INTERVAL_SECONDS', 60), id="position_checker_job")
+    
+    # === DEĞİŞTİRİLDİ: Görevlerin çakışmasını önlemek için max_instances=1 eklendi. ===
+    scheduler.add_job(
+        position_manager.check_all_managed_positions, 
+        "interval", 
+        seconds=app_config.settings.get('POSITION_CHECK_INTERVAL_SECONDS', 60), 
+        id="position_checker_job",
+        max_instances=1
+    )
     if app_config.settings.get('PROACTIVE_SCAN_ENABLED'):
-        scheduler.add_job(scanner.execute_single_scan_cycle, "interval", seconds=app_config.settings.get('PROACTIVE_SCAN_INTERVAL_SECONDS', 900), id="scanner_job", max_instances=1)
+        scheduler.add_job(
+            scanner.execute_single_scan_cycle, 
+            "interval", 
+            seconds=app_config.settings.get('PROACTIVE_SCAN_INTERVAL_SECONDS', 900), 
+            id="scanner_job",
+            max_instances=1
+        )
+    # ===================================================================================
     
     scheduler.start()
     logging.info("Uygulama başlangıcı tamamlandı. API kullanıma hazır.")
@@ -60,15 +78,19 @@ async def lifespan(app: FastAPI):
         logging.info("Telegram botu durduruldu.")
     scheduler.shutdown()
 
-app = FastAPI(title="Gemini Trading Agent API", version="3.2.1-stable", lifespan=lifespan)
+app = FastAPI(title="Gemini Trading Agent API", version="3.3.0-secure", lifespan=lifespan) # Versiyonu güncelleyebiliriz
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 api_router = APIRouter(prefix="/api")
-api_router.include_router(analysis_router)
-api_router.include_router(positions_router)
-api_router.include_router(dashboard_router)
-api_router.include_router(settings_router)
-api_router.include_router(scanner_router)
+# === DEĞİŞTİRİLDİ: Tüm veri rotalarını `Depends` ile koruma altına alıyoruz ===
+api_router.include_router(analysis_router, dependencies=[Depends(get_current_user)])
+api_router.include_router(positions_router, dependencies=[Depends(get_current_user)])
+api_router.include_router(dashboard_router, dependencies=[Depends(get_current_user)])
+api_router.include_router(settings_router, dependencies=[Depends(get_current_user)])
+api_router.include_router(scanner_router, dependencies=[Depends(get_current_user)])
+# === DEĞİŞTİRİLDİ: Auth rotası koruma DIŞINDA bırakılır ===
+api_router.include_router(auth_router)
+
 app.include_router(api_router)
 
 try:

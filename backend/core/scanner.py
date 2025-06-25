@@ -12,6 +12,11 @@ from core.trader import open_new_trade, TradeException
 from notifications import send_telegram_message
 from google.api_core import exceptions as google_exceptions
 
+# === YENİ KOD BAŞLANGICI ===
+# Önbellekleme modülünü import ediyoruz.
+from core import cache_manager
+# === YENİ KOD SONU ===
+
 BLACKLISTED_SYMBOLS = {}
 
 def execute_single_scan_cycle():
@@ -19,7 +24,6 @@ def execute_single_scan_cycle():
     Proaktif tarayıcının tek bir tam döngüsünü çalıştırır ve sonuçları
     bir sözlük olarak döndürür.
     """
-    # DÜZELTME: Her döngü başladığında en güncel ayarları yükle.
     app_config.load_config()
     logging.info("--- 🚀 Yeni Proaktif Tarama Döngüsü Başlatılıyor 🚀 ---")
     
@@ -84,8 +88,19 @@ def execute_single_scan_cycle():
             logging.info(f"🔍 Analiz ediliyor: {symbol}")
             current_price = _fetch_price_natively(symbol)
             if not current_price: logging.warning(f"{symbol} için fiyat alınamadı, atlanıyor."); continue
+            
             entry_tf = app_config.settings.get('PROACTIVE_SCAN_ENTRY_TIMEFRAME', '15m')
-            entry_indicators_result = get_technical_indicators(f"{symbol},{entry_tf}")
+            
+            # === YENİ KOD BAŞLANGICI: Önbellekleme ve Ön Filtreleme ===
+            indicator_key = f"{symbol}_{entry_tf}"
+            entry_indicators_result = cache_manager.get(indicator_key)
+            
+            if not entry_indicators_result:
+                logging.info(f"Önbellekte bulunamadı, {indicator_key} için teknik veriler çekiliyor...")
+                entry_indicators_result = get_technical_indicators(f"{symbol},{entry_tf}")
+                if entry_indicators_result.get("status") == "success":
+                    cache_manager.set(indicator_key, entry_indicators_result)
+
             if entry_indicators_result.get("status") != "success":
                 msg = f"({entry_tf}) için teknik veri alınamadı: {entry_indicators_result.get('message')}"
                 logging.error(f"{symbol} {msg}"); scan_results["summary"]["data_errors"] += 1
@@ -94,18 +109,33 @@ def execute_single_scan_cycle():
                     BLACKLISTED_SYMBOLS[symbol] = time.time() + 3600
                     logging.warning(f"{symbol} sürekli 'NaN' hatası veriyor, 1 saatliğine dinamik kara listeye alındı.")
                 continue
+
+            # AKILLI ÖN FİLTRELEME
+            indicators_data = entry_indicators_result["data"]
+            rsi = indicators_data.get('rsi', 50)
+            adx = indicators_data.get('adx', 0)
+
+            if adx < 20 and 35 < rsi < 65:
+                msg = f"Ön filtreyi geçemedi (RSI: {rsi:.1f}, ADX: {adx:.1f}). AI analizi atlanıyor."
+                logging.info(f"{symbol} için {msg}")
+                scan_results["details"].append({"type": "info", "symbol": symbol, "message": msg})
+                continue
+            # === YENİ KOD SONU ===
             
             final_prompt = ""
             if app_config.settings.get('PROACTIVE_SCAN_MTA_ENABLED', True):
                 trend_tf = app_config.settings.get('PROACTIVE_SCAN_TREND_TIMEFRAME', '4h')
+                # Not: Trend verileri için de önbellekleme eklenebilir. Şimdilik giriş verileri için eklenmiştir.
                 trend_indicators_result = get_technical_indicators(f"{symbol},{trend_tf}")
                 if trend_indicators_result.get("status") != "success":
                     msg = f"({trend_tf}) için trend verisi alınamadı: {trend_indicators_result.get('message')}"
                     logging.error(f"{symbol} {msg}"); scan_results["summary"]["data_errors"] += 1
                     scan_results["details"].append({"type": "error", "symbol": symbol, "message": msg}); continue
-                final_prompt = core_agent.create_mta_analysis_prompt(symbol, current_price, entry_tf, entry_indicators_result["data"], trend_tf, trend_indicators_result["data"])
+                # DEĞİŞTİRİLDİ: Ön filtrelemeden gelen veri kullanılacak.
+                final_prompt = core_agent.create_mta_analysis_prompt(symbol, current_price, entry_tf, indicators_data, trend_tf, trend_indicators_result["data"])
             else:
-                final_prompt = core_agent.create_final_analysis_prompt(symbol, entry_tf, current_price, entry_indicators_result["data"])
+                # DEĞİŞTİRİLDİ: Ön filtrelemeden gelen veri kullanılacak.
+                final_prompt = core_agent.create_final_analysis_prompt(symbol, entry_tf, current_price, indicators_data)
             
             try:
                 result = core_agent.llm.invoke(final_prompt)

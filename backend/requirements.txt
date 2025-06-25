@@ -16,7 +16,7 @@ google-generativeai
 # Exchange & Data Analysis
 ccxt
 pandas
-# DÜZELTME: pandas-ta ile uyumluluğu garanti etmek için numpy versiyonu sabitlendi.
+#  pandas-ta ile uyumluluğu garanti etmek için numpy versiyonu sabitlendi.
 numpy==1.26.4
 pandas-ta
 
@@ -25,3 +25,9 @@ python-dotenv
 tenacity
 requests
 python-telegram-bot
+
+# Güvenlik ve Kimlik Doğrulama
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+jose

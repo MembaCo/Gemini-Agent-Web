@@ -18,6 +18,10 @@ from .utils import _get_unified_symbol, _parse_symbol_timeframe_input, str_to_bo
 load_dotenv()
 exchange = None
 
+# DEĞİŞİKLİK: Basit in-memory cache mekanizması eklendi.
+indicator_cache = {}
+CACHE_TTL_SECONDS = 180  # 3 dakika
+
 @retry(wait=wait_exponential(multiplier=2, min=4, max=30), stop=stop_after_attempt(3))
 def _load_markets_with_retry(exchange_instance):
     logging.info("Borsa piyasa verileri yükleniyor (deneniyor)...")
@@ -86,40 +90,41 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
     """
     Belirtilen sembol ve zaman aralığı için teknik göstergeleri hesaplar.
     Bu fonksiyon, veri temizleme ve hata yönetimi ile daha dayanıklı hale getirilmiştir.
+    DEĞİŞİKLİK: Sonuçlar artık 3 dakika boyunca önbellekte tutulmaktadır.
     """
+    now = time.time()
+    # Önbellekte geçerli veri var mı kontrol et
+    if symbol_and_timeframe in indicator_cache:
+        cached_result, timestamp = indicator_cache[symbol_and_timeframe]
+        if (now - timestamp) < CACHE_TTL_SECONDS:
+            logging.info(f"İndikatörler önbellekten okundu: {symbol_and_timeframe}")
+            return cached_result
+
     if not exchange:
         return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
     
     symbol, timeframe = _parse_symbol_timeframe_input(symbol_and_timeframe)
     
     try:
-        # 1. Veri Çekme
         bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=200)
         if not bars or len(bars) < 50:
             return {"status": "error", "message": f"Teknik analiz için yetersiz veri: {len(bars)} mum çubuğu bulundu."}
         
-        # 2. DataFrame Oluşturma ve Temizleme
         df = pd.DataFrame(bars, columns=["timestamp", "open", "high", "low", "close", "volume"])
         
-        # Sayısal olmayan değerleri zorla ve hatalı olanları NaN yap
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            
-        # Herhangi bir önemli sütunda NaN olan satırları sil
         df.dropna(subset=['open', 'high', 'low', 'close', 'volume'], inplace=True)
         
-        # Temizlik sonrası veri yeterliliğini tekrar kontrol et
         if len(df) < 50:
             return {"status": "error", "message": f"Veri temizliğinden sonra yetersiz veri: {len(df)} mum çubuğu kaldı."}
 
-        # 3. İndikatörleri Hesapla
         df.ta.rsi(length=14, append=True)
         df.ta.macd(fast=12, slow=26, signal=9, append=True)
         df.ta.bbands(length=20, std=2, append=True)
         df.ta.stoch(k=14, d=3, smooth_k=3, append=True)
         df.ta.adx(length=14, append=True)
 
-        # 4. Sonuçları Al
         last = df.iloc[-1]
         
         indicators = {
@@ -128,17 +133,20 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
             "stoch_k": last.get('STOCHk_14_3_3'), "stoch_d": last.get('STOCHd_14_3_3'), "adx": last.get('ADX_14')
         }
         
-        # 5. Sonuçlarda NaN kontrolü
         if any(value is None or pd.isna(value) for value in indicators.values()):
             logging.warning(f"İndikatör hesaplaması sonrası NaN değeri bulundu. Sembol: {symbol}, Zaman Aralığı: {timeframe}")
             return {"status": "error", "message": f"İndikatör hesaplanamadı (Hesaplama Sonrası NaN). Sembol: {symbol}"}
         
-        return {"status": "success", "data": indicators}
+        result = {"status": "success", "data": indicators}
+        # Başarılı sonucu önbelleğe al
+        indicator_cache[symbol_and_timeframe] = (result, now)
+        return result
         
     except Exception as e:
         logging.error(f"Teknik gösterge alınırken genel hata: {e}", exc_info=True)
         return {"status": "error", "message": f"Beklenmedik bir hata oluştu: {str(e)}"}
 
+# ... (Diğer fonksiyonlar değişmeden kalır) ...
 def get_atr_value(symbol_and_timeframe: str) -> dict:
     if not exchange: return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
     try:
@@ -168,42 +176,30 @@ def get_top_gainers_losers(top_n: int, min_volume_usdt: int) -> list:
         return []
 
 def execute_trade_order(symbol: str, side: str, amount: float, price: float = None, stop_loss: float = None, take_profit: float = None, leverage: float = None) -> dict:
-    """
-    Alım/satım emri gönderir ve emrin gerçekleşme fiyatını içeren bir sözlük döndürür.
-    """
     if not exchange: 
         return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
-
     unified_symbol = _get_unified_symbol(symbol)
     try:
         formatted_amount = exchange.amount_to_precision(unified_symbol, amount)
         formatted_price = exchange.price_to_precision(unified_symbol, price) if price is not None else None
-        
         if not app_config.settings.get('LIVE_TRADING'):
             sim_price = price or _fetch_price_natively(unified_symbol)
             return {"status": "success", "message": f"Simülasyon emri başarılı: {side} {formatted_amount} {unified_symbol}", "fill_price": sim_price}
-            
         if leverage: exchange.set_leverage(int(leverage), unified_symbol)
-        
         order_type = app_config.settings.get('DEFAULT_ORDER_TYPE', 'LIMIT').lower()
         order = None
-        
         if order_type == 'limit' and formatted_price:
             order = exchange.create_limit_order(unified_symbol, side, float(formatted_amount), float(formatted_price))
         else:
             order = exchange.create_market_order(unified_symbol, side, float(formatted_amount))
-
-        # DÜZELTME: PNL hesaplaması için emrin gerçek gerçekleşme fiyatını alıyoruz.
         fill_price = order.get('average') or order.get('price')
         if not fill_price:
-            # Fallback: Eğer API direkt fiyatı döndürmezse, son işlemi çek.
-            time.sleep(1) # Borsa API'sinin işlemi kaydetmesi için bekle
+            time.sleep(1)
             trades = exchange.fetch_my_trades(unified_symbol, limit=1)
             if trades:
                 fill_price = trades[0]['price']
-            else: # Son çare olarak anlık fiyatı al
+            else:
                 fill_price = _fetch_price_natively(unified_symbol)
-
         if stop_loss and take_profit:
             opposite = 'sell' if side == 'buy' else 'buy'
             time.sleep(0.5)
@@ -211,13 +207,11 @@ def execute_trade_order(symbol: str, side: str, amount: float, price: float = No
             except Exception as sl_e: logging.error(f"SL emri gönderilemedi: {sl_e}")
             try: exchange.create_order(unified_symbol, 'TAKE_PROFIT_MARKET', opposite, float(formatted_amount), None, {'stopPrice': take_profit, 'reduceOnly': True})
             except Exception as tp_e: logging.error(f"TP emri gönderilemedi: {tp_e}")
-            
         return {"status": "success", "message": f"İşlem emri ({side} {formatted_amount} {unified_symbol}) başarıyla gönderildi.", "fill_price": fill_price}
-        
     except Exception as e:
         logging.error(f"İşlem sırasında hata: {e}", exc_info=True)
         return {"status": "error", "message": f"HATA: İşlem sırasında beklenmedik bir hata oluştu: {e}"}
-    
+
 def get_open_positions_from_exchange() -> list:
     if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future': return []
     try:

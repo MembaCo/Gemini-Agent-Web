@@ -37,7 +37,7 @@ default_settings = {
     # === OTOMASYON & TARAYICI AYARLARI ===
     "POSITION_CHECK_INTERVAL_SECONDS": 60,  # Arka plan görevinin aktif pozisyonları kaç saniyede bir kontrol edeceği.
     "PROACTIVE_SCAN_ENABLED": True,         # Uygulama başladığında Proaktif Tarayıcı arka plan görevi çalışsın mı?
-    "PROACTIVE_SCAN_INTERVAL_SECONDS": 900, # Proaktif Tarayıcının kaç saniyede bir piyasayı tarayacağı (15 dakika).
+    "PROACTIVE_SCAN_INTERVAL_SECONDS": 1800, # Proaktif Tarayıcının kaç saniyede bir piyasayı tarayacağı (30 dakika).
     "PROACTIVE_SCAN_AUTO_CONFIRM": False,   # Tarayıcı bir fırsat bulduğunda kullanıcı onayı olmadan otomatik işlem açsın mı?
     "PROACTIVE_SCAN_IN_LOOP": True,         # Arka plan görevinin döngüsel olarak çalışıp çalışmayacağı.
     "PROACTIVE_SCAN_USE_GAINERS_LOSERS": True,# Tarama listesine "En Çok Yükselenler/Düşenler" eklensin mi?
@@ -50,5 +50,5 @@ default_settings = {
     # --- FİLTRELEME & BİLDİRİM ---
     "PROACTIVE_SCAN_BLACKLIST": ["SHIB", "PEPE", "MEME", "DOGE"], # Taramalarda asla analize dahil edilmeyecek coinler.
     "PROACTIVE_SCAN_WHITELIST": ["BTC", "ETH", "SOL"],           # Her tarama döngüsünde mutlaka analize dahil edilecek coinler.
-    "TELEGRAM_ENABLED": True,               # Telegram bildirimleri aktif edilsin mi?
+    "TELEGRAM_ENABLED": False,               # Telegram bildirimleri aktif edilsin mi?
 }
