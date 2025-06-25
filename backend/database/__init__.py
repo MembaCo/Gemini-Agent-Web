@@ -24,4 +24,10 @@ from .database import (
     # İşlem Geçmişi Fonksiyonları
     log_trade_to_history,
     get_trade_history,
+
+    # === YENİ KOD BAŞLANGICI: Strateji Ön Ayarları Fonksiyonları ===
+    get_all_presets,
+    add_preset,
+    delete_preset,
+    # === YENİ KOD SONU ===
 )

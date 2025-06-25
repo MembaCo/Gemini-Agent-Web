@@ -8,3 +8,4 @@ from .scanner import router as scanner_router
 from .settings import router as settings_router
 from .backtest import router as backtest_router
 from .charts import router as charts_router
+from .presets import router as presets_router

@@ -25,7 +25,8 @@ from api import (
     positions_router,
     scanner_router,
     settings_router,
-    backtest_router
+    backtest_router,
+    presets_router,
 )
 from telegram_bot import create_telegram_app
 
@@ -100,6 +101,7 @@ api_router.include_router(positions_router, dependencies=[Depends(get_current_us
 api_router.include_router(dashboard_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(settings_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(scanner_router, dependencies=[Depends(get_current_user)])
+api_router.include_router(presets_router, dependencies=[Depends(get_current_user)])
 app.include_router(api_router)
 
 try:

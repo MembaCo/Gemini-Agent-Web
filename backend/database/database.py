@@ -44,20 +44,23 @@ def init_db():
         
         # --- TABLO OLUŞTURMA ---
         cursor.execute('CREATE TABLE IF NOT EXISTS managed_positions (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL UNIQUE, side TEXT NOT NULL, amount REAL NOT NULL, initial_amount REAL, entry_price REAL NOT NULL, timeframe TEXT NOT NULL, leverage REAL NOT NULL, stop_loss REAL NOT NULL, initial_stop_loss REAL, take_profit REAL NOT NULL, partial_tp_executed BOOLEAN DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, pnl REAL DEFAULT 0, pnl_percentage REAL DEFAULT 0)')
-        
-        # === DEĞİŞTİRİLDİ: trade_history tablosuna 'timeframe' sütunu eklendi ===
         cursor.execute('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, side TEXT NOT NULL, amount REAL NOT NULL, entry_price REAL NOT NULL, close_price REAL NOT NULL, pnl REAL NOT NULL, status TEXT NOT NULL, timeframe TEXT, opened_at TIMESTAMP, closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
-        
-        # --- ŞEMA GÜNCELLEMELERİ (GERİYE DÖNÜK UYUMLULUK) ---
-        # managed_positions için sütun kontrolü
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS strategy_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                settings TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         cursor.execute("PRAGMA table_info(managed_positions)")
+
         columns = [row[1] for row in cursor.fetchall()]
         if 'pnl' not in columns:
             cursor.execute('ALTER TABLE managed_positions ADD COLUMN pnl REAL DEFAULT 0')
         if 'pnl_percentage' not in columns:
             cursor.execute('ALTER TABLE managed_positions ADD COLUMN pnl_percentage REAL DEFAULT 0')
-
-        # === YENİ KOD: trade_history için 'timeframe' sütununu geriye dönük ekle ===
+            
         cursor.execute("PRAGMA table_info(trade_history)")
         history_columns = [row[1] for row in cursor.fetchall()]
         if 'timeframe' not in history_columns:
@@ -102,7 +105,6 @@ def update_settings(settings: dict):
     finally:
         conn.close()
 
-# --- POZİSYON YÖNETİMİ FONKSİYONLARI (Değişiklik yok) ---
 def add_position(pos: dict):
     conn = get_db_connection()
     try:
@@ -167,9 +169,48 @@ def update_position_pnl(symbol: str, pnl: float, pnl_percentage: float):
     finally:
         conn.close()
 
+def get_all_presets() -> list[dict]:
+    """Veritabanındaki tüm strateji ön ayarlarını çeker."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute('SELECT * FROM strategy_presets ORDER BY name ASC')
+        presets = []
+        for row in cursor.fetchall():
+            preset_dict = dict(row)
+            preset_dict['settings'] = json.loads(preset_dict['settings']) # JSON string'i tekrar dict'e çevir
+            presets.append(preset_dict)
+        return presets
+    finally:
+        conn.close()
+
+def add_preset(name: str, settings: dict):
+    """Veritabanına yeni bir strateji ön ayarı ekler."""
+    conn = get_db_connection()
+    try:
+        settings_json = json.dumps(settings) # Ayarları JSON string olarak sakla
+        conn.execute("INSERT INTO strategy_presets (name, settings) VALUES (?, ?)", (name, settings_json))
+        conn.commit()
+        # Eklenen son kaydın ID'sini alıp döndürebiliriz
+        cursor = conn.cursor()
+        cursor.execute("SELECT last_insert_rowid()")
+        new_id = cursor.fetchone()[0]
+        return {"id": new_id, "name": name, "settings": settings}
+    finally:
+        conn.close()
+
+def delete_preset(preset_id: int):
+    """Veritabanından bir strateji ön ayarını ID'sine göre siler."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM strategy_presets WHERE id = ?", (preset_id,))
+        conn.commit()
+        return cursor.rowcount > 0 # Silme işlemi başarılıysa True döner
+    finally:
+        conn.close()
+
 # --- İŞLEM GEÇMİŞİ FONKSİYONLARI ---
 
-# === DEĞİŞTİRİLDİ: 'timeframe' bilgisi artık veritabanına kaydediliyor ===
 def log_trade_to_history(closed_pos: dict, close_price: float, status: str):
     """Kapanan bir işlemi (zaman aralığı dahil) geçmiş tablosuna kaydeder."""
     conn = get_db_connection()

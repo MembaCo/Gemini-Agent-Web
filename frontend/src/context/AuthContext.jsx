@@ -92,7 +92,10 @@ export const AuthProvider = ({ children }) => {
     const reanalyzePosition = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/reanalyze`, { method: 'POST' }), [apiFetch]);
     const runBacktest = useCallback((params) => apiFetch('/backtest/run', { method: 'POST', body: JSON.stringify(params) }), [apiFetch]);
     const fetchChartData = useCallback((params) => {const query = new URLSearchParams(params).toString();return apiFetch(`/charts/ohlcv?${query}`);},[apiFetch]);
-
+    const fetchPresets = useCallback(() => apiFetch('/presets/'), [apiFetch]);
+    const savePreset = useCallback((preset) => apiFetch('/presets/', { method: 'POST', body: JSON.stringify(preset) }), [apiFetch]);
+    const deletePreset = useCallback((presetId) => apiFetch(`/presets/${presetId}`, { method: 'DELETE' }), [apiFetch]);
+    
 
     const value = {
         isAuthenticated,
@@ -115,7 +118,10 @@ export const AuthProvider = ({ children }) => {
         refreshPnl,
         reanalyzePosition,
         runBacktest,
-        fetchChartData
+        fetchChartData,
+        fetchPresets,
+        savePreset,
+        deletePreset
     };
 
     return (
