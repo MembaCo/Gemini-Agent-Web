@@ -281,7 +281,8 @@ const SettingsModal = ({ settings, isVisible, onClose, onSave }) => {
     );
 };
 
-const AnalysisResultModal = ({ result, isVisible, onClose, onConfirmTrade }) => {
+// <--- DÜZELTME: Bu satıra 'export' eklendi --->
+export const AnalysisResultModal = ({ result, isVisible, onClose, onConfirmTrade }) => {
     const isTradeable = result?.recommendation === 'AL' || result?.recommendation === 'SAT';
     return ( <Modal isVisible={isVisible} onClose={onClose}><h2 className="text-2xl font-bold text-white mb-4">Analiz Sonucu</h2><div className="space-y-3 text-gray-300"><p><span className="font-semibold text-gray-400">Sembol:</span> {result?.symbol}</p><p><span className="font-semibold text-gray-400">Tavsiye:</span> <span className={`font-bold ${isTradeable ? (result?.recommendation === 'AL' ? 'text-green-400' : 'text-red-400') : 'text-yellow-400'}`}>{result?.recommendation}</span></p><p><span className="font-semibold text-gray-400">Gerekçe:</span> {result?.reason}</p></div><div className="mt-6 flex gap-4"><button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">Kapat</button>{isTradeable && <button onClick={() => onConfirmTrade(result)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md">Pozisyon Aç</button>}</div></Modal> );
 };
