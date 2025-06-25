@@ -1,23 +1,31 @@
 # ==============================================================================
 # File: backend/core/position_manager.py
 # @author: Memba Co.
+#
+# --- YENİLİK ---
+# sync_positions_on_startup fonksiyonu artık sadece uyarı vermekle kalmıyor,
+# aynı zamanda borsada bulunan ve veritabanında olmayan pozisyonları,
+# güncel ayarlara göre yeni SL/TP hesaplayarak otomatik olarak
+# veritabanına ekliyor ve yönetime alıyor.
 # ==============================================================================
 import logging
 import database
 from core import app_config
-from tools import _fetch_price_natively, update_stop_loss_order, execute_trade_order, get_open_positions_from_exchange
+# Gerekli yeni importlar
+from tools import (
+    _fetch_price_natively, update_stop_loss_order, execute_trade_order, 
+    get_open_positions_from_exchange, get_atr_value, _get_unified_symbol
+)
 from core.trader import close_existing_trade, TradeException
 from notifications import send_telegram_message, format_partial_tp_message
 
-# === YENİ FONKSİYON BAŞLANGICI ===
 def sync_positions_on_startup():
     """
     Uygulama başlangıcında çalışarak borsadaki açık pozisyonlarla yerel
-    veritabanını senkronize eder.
+    veritabanını senkronize eder. Yönetilmeyen pozisyonları içe aktarır.
     """
     logging.info(">>> Başlangıçta Pozisyon Senkronizasyonu Başlatılıyor...")
     try:
-        # 1. Hem borsadan hem de veritabanından mevcut pozisyonları çek
         exchange_positions_raw = get_open_positions_from_exchange()
         db_positions_raw = database.get_all_positions()
 
@@ -25,40 +33,75 @@ def sync_positions_on_startup():
             logging.info("Borsada ve veritabanında yönetilecek pozisyon bulunamadı. Senkronizasyon tamamlandı.")
             return
 
-        # 2. Sembol listelerini karşılaştırma için hazırla
-        # CCXT'den gelen semboller 'BTCUSDT' formatındadır.
-        exchange_symbols = {p['info']['symbol'] for p in exchange_positions_raw}
-        # Veritabanındaki semboller 'BTC/USDT' formatındadır. Karşılaştırma için formatı eşitliyoruz.
-        db_symbols = {p['symbol'].replace('/', '') for p in db_positions_raw}
+        # Karşılaştırma için sembol listelerini ve tam pozisyon verilerini hazırla
+        exchange_positions = {p['info']['symbol'].replace('USDT', ''): p for p in exchange_positions_raw}
+        db_symbols = {p['symbol'].replace('/USDT', '') for p in db_positions_raw}
 
-        # 3. Veritabanında olan ama borsada olmayanları bul (Hayalet Pozisyonlar)
-        # Bot kapalıyken pozisyon borsada manuel kapatılmış olabilir.
-        ghost_positions = db_symbols - exchange_symbols
-        for symbol_ticker in ghost_positions:
-            # Veritabanından silmek için standart formata geri çevir ('BTC/USDT')
-            symbol_unified = f"{symbol_ticker.replace('USDT', '')}/USDT"
+        # 1. Veritabanında olan ama borsada olmayanları bul (Hayalet Pozisyonlar)
+        ghost_symbols = db_symbols - set(exchange_positions.keys())
+        for symbol_base in ghost_symbols:
+            symbol_unified = f"{symbol_base}/USDT"
             logging.warning(f"Hayalet Pozisyon Bulundu: '{symbol_unified}' veritabanında var ama borsada yok. Veritabanından kaldırılıyor...")
             database.remove_position(symbol_unified)
             send_telegram_message(f"⚠️ **Senkronizasyon Uyarısı** ⚠️\n`{symbol_unified}` pozisyonu veritabanında bulunuyordu ancak borsada kapalıydı. Veritabanı temizlendi.")
 
-        # 4. Borsada olan ama veritabanında olmayanları bul (Yönetilmeyen Pozisyonlar)
-        # Bot kapalıyken borsada manuel pozisyon açılmış olabilir.
-        unmanaged_positions = exchange_symbols - db_symbols
-        for symbol_ticker in unmanaged_positions:
-            symbol_unified = f"{symbol_ticker.replace('USDT', '')}/USDT"
-            logging.warning(f"Yönetilmeyen Pozisyon Bulundu: '{symbol_unified}' borsada açık ama veritabanında kayıtlı değil. Lütfen manuel kontrol edin.")
-            send_telegram_message(f"⚠️ **Senkronizasyon Uyarısı** ⚠️\n`{symbol_unified}` pozisyonu borsada açık ancak bot tarafından yönetilmiyor. Lütfen manuel olarak kontrol edin.")
-        
-        total_synced = len(ghost_positions) + len(unmanaged_positions)
+        # 2. Borsada olan ama veritabanında olmayanları bul ve İÇE AKTAR
+        unmanaged_symbols = set(exchange_positions.keys()) - db_symbols
+        for symbol_base in unmanaged_symbols:
+            pos_data = exchange_positions[symbol_base]
+            symbol_unified = _get_unified_symbol(pos_data['info']['symbol'])
+            logging.info(f"Yönetilmeyen Pozisyon Bulundu: '{symbol_unified}'. Sisteme entegre ediliyor...")
+
+            try:
+                # Pozisyonun temel bilgilerini al
+                entry_price = float(pos_data.get('entryPrice', 0))
+                amount = float(pos_data.get('contracts', 0))
+                leverage = float(pos_data.get('leverage', 1))
+                side = 'buy' if pos_data.get('side') == 'long' else 'sell'
+                
+                # Bu pozisyon için yeni ve güvenli SL/TP hesapla
+                # Zaman aralığı bilinmediği için varsayılan bir değer kullanıyoruz
+                timeframe = '15m'
+                atr_result = get_atr_value(f"{symbol_unified},{timeframe}")
+                if atr_result.get("status") != "success":
+                    logging.error(f"'{symbol_unified}' için ATR alınamadı, içe aktarılamıyor. Mesaj: {atr_result.get('message')}")
+                    continue
+                
+                atr_value = atr_result['value']
+                sl_distance = atr_value * app_config.settings['ATR_MULTIPLIER_SL']
+                tp_distance = sl_distance * app_config.settings['RISK_REWARD_RATIO_TP']
+                
+                stop_loss_price = entry_price - sl_distance if side == "buy" else entry_price + sl_distance
+                take_profit_price = entry_price + tp_distance if side == "buy" else entry_price - tp_distance
+
+                # Veritabanına eklenecek pozisyon objesini oluştur
+                position_to_add = {
+                    "symbol": symbol_unified,
+                    "side": side,
+                    "amount": amount,
+                    "entry_price": entry_price,
+                    "timeframe": timeframe, # Varsayılan olarak ayarlandı
+                    "leverage": leverage,
+                    "stop_loss": stop_loss_price,
+                    "take_profit": take_profit_price,
+                }
+                
+                # Veritabanına ekle
+                database.add_position(position_to_add)
+                logging.info(f"✅ BAŞARILI: '{symbol_unified}' pozisyonu içe aktarıldı ve yönetime alındı.")
+                send_telegram_message(f"✅ **Pozisyon İçe Aktarıldı** ✅\n`{symbol_unified}` pozisyonu borsada açık bulunduğu için yönetime alındı.")
+
+            except Exception as import_e:
+                logging.error(f"'{symbol_unified}' pozisyonu içe aktarılırken hata: {import_e}", exc_info=True)
+
+        total_synced = len(ghost_symbols) + len(unmanaged_symbols)
         if total_synced > 0:
-            logging.info(f"<<< Pozisyon senkronizasyonu tamamlandı. {len(ghost_positions)} hayalet pozisyon temizlendi, {len(unmanaged_positions)} yönetilmeyen pozisyon raporlandı.")
+            logging.info(f"<<< Pozisyon senkronizasyonu tamamlandı. {len(ghost_symbols)} hayalet pozisyon temizlendi, {len(unmanaged_symbols)} pozisyon içe aktarıldı.")
         else:
             logging.info("<<< Tüm pozisyonlar senkronize. Herhangi bir tutarsızlık bulunamadı.")
 
     except Exception as e:
         logging.error(f"Başlangıçta pozisyon senkronizasyonu sırasında kritik hata: {e}", exc_info=True)
-# === YENİ FONKSİYON SONU ===
-
 
 async def check_all_managed_positions():
     """
@@ -73,13 +116,9 @@ async def check_all_managed_positions():
     
     for position in active_positions:
         try:
-            # Önce PNL'i yenileyelim
             await refresh_single_position_pnl(position['symbol'])
-            
-            # SL/TP kontrolü için pozisyonun en güncel halini tekrar veritabanından okuyoruz.
             updated_position = database.get_position_by_symbol(position['symbol'])
-            if not updated_position:
-                continue
+            if not updated_position: continue
 
             current_price = _fetch_price_natively(updated_position["symbol"])
             if current_price is None:
@@ -122,12 +161,10 @@ async def refresh_single_position_pnl(symbol: str):
     current_price = _fetch_price_natively(position["symbol"])
     if current_price is None:
         logging.warning(f"PNL yenileme için fiyat alınamadı: {symbol}")
-        # Fiyat alınamazsa PNL'i sıfır olarak işaretle
         database.update_position_pnl(position['symbol'], 0, 0)
         return
 
-    pnl = 0
-    pnl_percentage = 0
+    pnl, pnl_percentage = 0, 0
     entry_price = position.get('entry_price', 0)
     amount = position.get('amount', 0)
     leverage = position.get('leverage', 1)
@@ -146,22 +183,19 @@ def handle_partial_tp(position: dict, current_price: float):
     entry_price = position.get('entry_price')
     side = position.get("side")
     
-    if not (initial_sl and entry_price):
-        return
+    if not (initial_sl and entry_price): return
 
     risk_distance = abs(entry_price - initial_sl)
     partial_tp_price = entry_price + (risk_distance * app_config.settings['PARTIAL_TP_TARGET_RR']) if side == 'buy' else entry_price - (risk_distance * app_config.settings['PARTIAL_TP_TARGET_RR'])
 
     if (side == 'buy' and current_price >= partial_tp_price) or (side == 'sell' and current_price <= partial_tp_price):
         logging.info(f"[PARTIAL-TP] {position['symbol']} için kısmi kâr alma hedefi {partial_tp_price:.4f} ulaşıldı.")
-        
         initial_amount = position.get('initial_amount') or position.get('amount')
         amount_to_close = initial_amount * (app_config.settings['PARTIAL_TP_CLOSE_PERCENT'] / 100)
         remaining_amount = position['amount'] - amount_to_close
         
         if remaining_amount > 0:
             result = execute_trade_order(symbol=position['symbol'], side='sell' if side == 'buy' else 'buy', amount=amount_to_close)
-            
             if result.get("status") == "success":
                 logging.info(f"Kısmi kâr alma başarılı: {amount_to_close:.4f} {position['symbol']} kapatıldı.")
                 new_sl_price = entry_price
@@ -178,8 +212,7 @@ def handle_trailing_stop_loss(position: dict, current_price: float):
     current_sl_price = position.get("stop_loss", 0.0)
     side = position.get("side")
     
-    if not (initial_sl and entry_price and current_sl_price):
-        return
+    if not (initial_sl and entry_price and current_sl_price): return
 
     profit_perc = ((current_price - entry_price) / entry_price) * 100 * (1 if side == 'buy' else -1)
     
