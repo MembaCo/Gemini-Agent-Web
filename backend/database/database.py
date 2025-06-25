@@ -47,12 +47,16 @@ def init_db():
         cursor.execute('CREATE TABLE IF NOT EXISTS managed_positions (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL UNIQUE, side TEXT NOT NULL, amount REAL NOT NULL, initial_amount REAL, entry_price REAL NOT NULL, timeframe TEXT NOT NULL, leverage REAL NOT NULL, stop_loss REAL NOT NULL, initial_stop_loss REAL, take_profit REAL NOT NULL, partial_tp_executed BOOLEAN DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, pnl REAL DEFAULT 0, pnl_percentage REAL DEFAULT 0)')
         cursor.execute('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, side TEXT NOT NULL, amount REAL NOT NULL, entry_price REAL NOT NULL, close_price REAL NOT NULL, pnl REAL NOT NULL, status TEXT NOT NULL, timeframe TEXT, opened_at TIMESTAMP, closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, type TEXT NOT NULL)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS strategy_presets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, settings TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+        
+        # YENİ: Tarayıcı adayları için yeni tablo
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS strategy_presets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                settings TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS scanner_candidates (
+                symbol TEXT PRIMARY KEY,
+                source TEXT,
+                timeframe TEXT,
+                indicators TEXT, -- JSON dizesi olarak saklanacak
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
@@ -70,10 +74,8 @@ def init_db():
             cursor.execute('ALTER TABLE trade_history ADD COLUMN timeframe TEXT')
             logging.info("'trade_history' tablosuna 'timeframe' sütunu eklendi.")
 
-        # === DÜZELTME: Commit işlemi, tabloyu kullanan fonksiyondan ÖNCE çağrılmalı ===
         conn.commit()
         
-        # Artık tabloların var olduğundan emin olduğumuz için ayarları başlatabiliriz.
         _initialize_settings(conn)
         
         logging.info("Veritabanı tabloları başarıyla kontrol edildi/oluşturuldu.")
@@ -83,7 +85,8 @@ def init_db():
     finally:
         conn.close()
 
-# --- AYAR YÖNETİMİ FONKSİYONLARI ---
+# --- AYAR YÖNETİMİ FONKSİYONLARI (Değişiklik yok) ---
+# ... (get_all_settings ve update_settings fonksiyonları burada) ...
 def get_all_settings() -> dict:
     conn = get_db_connection()
     try:
@@ -112,7 +115,8 @@ def update_settings(settings: dict):
     finally:
         conn.close()
 
-# --- POZİSYON YÖNETİMİ FONKSİYONLARI ---
+# --- POZİSYON YÖNETİMİ FONKSİYONLARI (Değişiklik yok) ---
+# ... (add_position, get_all_positions vb. fonksiyonlar burada) ...
 def add_position(pos: dict):
     conn = get_db_connection()
     try:
@@ -177,7 +181,8 @@ def update_position_pnl(symbol: str, pnl: float, pnl_percentage: float):
     finally:
         conn.close()
 
-# --- İŞLEM GEÇMİŞİ FONKSİYONLARI ---
+# --- İŞLEM GEÇMİŞİ FONKSİYONLARI (Değişiklik yok) ---
+# ... (log_trade_to_history ve get_trade_history fonksiyonları burada) ...
 def log_trade_to_history(closed_pos: dict, close_price: float, status: str):
     """Kapanan bir işlemi (zaman aralığı dahil) geçmiş tablosuna kaydeder."""
     conn = get_db_connection()
@@ -185,22 +190,11 @@ def log_trade_to_history(closed_pos: dict, close_price: float, status: str):
         initial_amount = closed_pos.get('initial_amount', closed_pos['amount'])
         pnl = (close_price - closed_pos['entry_price']) * initial_amount if closed_pos['side'] == 'buy' else (closed_pos['entry_price'] - close_price) * initial_amount
         
-        # Kapanan pozisyondan timeframe'i al, yoksa 'N/A' olarak ata
         timeframe = closed_pos.get('timeframe', 'N/A')
         
         conn.execute(
             'INSERT INTO trade_history (symbol, side, amount, entry_price, close_price, pnl, status, opened_at, timeframe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (
-                closed_pos['symbol'], 
-                closed_pos['side'], 
-                initial_amount, 
-                closed_pos['entry_price'], 
-                close_price, 
-                pnl, 
-                status, 
-                closed_pos['created_at'],
-                timeframe  # Yeni eklenen veri
-            )
+            (closed_pos['symbol'], closed_pos['side'], initial_amount, closed_pos['entry_price'], close_price, pnl, status, closed_pos['created_at'], timeframe)
         )
         conn.commit()
     finally:
@@ -215,7 +209,8 @@ def get_trade_history() -> list[dict]:
     finally:
         conn.close()
 
-# --- STRATEJİ ÖN AYARLARI FONKSİYONLARI ---
+# --- STRATEJİ ÖN AYARLARI FONKSİYONLARI (Değişiklik yok) ---
+# ... (get_all_presets, add_preset, delete_preset fonksiyonları burada) ...
 def get_all_presets() -> list[dict]:
     """Veritabanındaki tüm strateji ön ayarlarını çeker."""
     conn = get_db_connection()
@@ -224,7 +219,7 @@ def get_all_presets() -> list[dict]:
         presets = []
         for row in cursor.fetchall():
             preset_dict = dict(row)
-            preset_dict['settings'] = json.loads(preset_dict['settings']) # JSON string'i tekrar dict'e çevir
+            preset_dict['settings'] = json.loads(preset_dict['settings'])
             presets.append(preset_dict)
         return presets
     finally:
@@ -234,10 +229,9 @@ def add_preset(name: str, settings: dict):
     """Veritabanına yeni bir strateji ön ayarı ekler."""
     conn = get_db_connection()
     try:
-        settings_json = json.dumps(settings) # Ayarları JSON string olarak sakla
+        settings_json = json.dumps(settings)
         conn.execute("INSERT INTO strategy_presets (name, settings) VALUES (?, ?)", (name, settings_json))
         conn.commit()
-        # Eklenen son kaydın ID'sini alıp döndürebiliriz
         cursor = conn.cursor()
         cursor.execute("SELECT last_insert_rowid()")
         new_id = cursor.fetchone()[0]
@@ -252,6 +246,65 @@ def delete_preset(preset_id: int):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM strategy_presets WHERE id = ?", (preset_id,))
         conn.commit()
-        return cursor.rowcount > 0 # Silme işlemi başarılıysa True döner
+        return cursor.rowcount > 0
     finally:
         conn.close()
+
+# YENİ: SCANNER ADAYLARI İÇİN VERİTABANI FONKSİYONLARI
+def save_scanner_candidates(candidates: list[dict]):
+    """Mevcut adayları siler ve yenilerini veritabanına kaydeder."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM scanner_candidates")
+        
+        if candidates:
+            for candidate in candidates:
+                cursor.execute(
+                    """
+                    INSERT INTO scanner_candidates (symbol, source, timeframe, indicators, last_updated)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (
+                        candidate['symbol'],
+                        candidate.get('source', 'N/A'),
+                        candidate.get('timeframe', 'N/A'),
+                        json.dumps(candidate.get('indicators', {}))
+                    )
+                )
+        conn.commit()
+        logging.info(f"{len(candidates)} tarama adayı veritabanına kaydedildi.")
+    finally:
+        conn.close()
+
+def get_all_scanner_candidates() -> list[dict]:
+    """Kaydedilmiş tüm tarayıcı adaylarını veritabanından çeker."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute('SELECT * FROM scanner_candidates ORDER BY symbol ASC')
+        candidates = []
+        for row in cursor.fetchall():
+            candidate_dict = dict(row)
+            candidate_dict['indicators'] = json.loads(candidate_dict.get('indicators', '{}'))
+            candidates.append(candidate_dict)
+        return candidates
+    finally:
+        conn.close()
+
+def update_scanner_candidate(symbol: str, new_indicators: dict):
+    """Tek bir adayın gösterge verilerini ve güncelleme zamanını günceller."""
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE scanner_candidates
+            SET indicators = ?, last_updated = CURRENT_TIMESTAMP
+            WHERE symbol = ?
+            """,
+            (json.dumps(new_indicators), symbol)
+        )
+        conn.commit()
+        logging.info(f"{symbol} adayı veritabanında güncellendi.")
+    finally:
+        conn.close()
+

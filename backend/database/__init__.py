@@ -1,9 +1,6 @@
 # backend/database/__init__.py
 # @author: Memba Co.
 
-# Bu dosya, 'database' klasörünün bir Python paketi olarak tanınmasını sağlar
-# ve .database modülündeki (database.py) tüm fonksiyonları dışa aktarır.
-
 from .database import (
     init_db,
     get_db_connection,
@@ -25,9 +22,13 @@ from .database import (
     log_trade_to_history,
     get_trade_history,
 
-    # === YENİ KOD BAŞLANGICI: Strateji Ön Ayarları Fonksiyonları ===
+    # Strateji Ön Ayarları Fonksiyonları
     get_all_presets,
     add_preset,
     delete_preset,
-    # === YENİ KOD SONU ===
+    
+    # YENİ: Scanner Adayları Fonksiyonları
+    save_scanner_candidates,
+    get_all_scanner_candidates,
+    update_scanner_candidate,
 )

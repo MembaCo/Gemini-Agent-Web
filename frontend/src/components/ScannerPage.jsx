@@ -1,41 +1,75 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ScanSearch, PlayCircle, Loader2, Bot, Check, AlertTriangle } from 'lucide-react';
-// Analiz modalını Dashboard sayfasından yeniden kullanıyoruz. Bir önceki düzeltmemizle bu artık mümkün.
+import { ScanSearch, PlayCircle, Loader2, Bot, RefreshCw } from 'lucide-react';
 import { AnalysisResultModal } from './DashboardPage';
 
 export const ScannerPage = () => {
-    const { showToast, runScannerCandidates, runAnalysis } = useAuth();
+    const { showToast, runScannerCandidates, fetchScannerCandidates, refreshScannerCandidate, runAnalysis } = useAuth();
 
-    const [isLoading, setIsLoading] = useState(false);
-    // YENİ: Yüklemenin hangi aşamada olduğunu tutmak için yeni bir state.
+    const [isScanning, setIsScanning] = useState(false);
+    const [isFetchingInitial, setIsFetchingInitial] = useState(true);
     const [loadingStage, setLoadingStage] = useState('');
     const [candidates, setCandidates] = useState([]);
+    
     const [analyzingSymbol, setAnalyzingSymbol] = useState(null);
+    const [refreshingSymbol, setRefreshingSymbol] = useState(null);
     const [analysisResult, setAnalysisResult] = useState(null);
 
+    // Sayfa ilk yüklendiğinde kayıtlı adayları çek
+    const loadInitialCandidates = useCallback(async () => {
+        setIsFetchingInitial(true);
+        try {
+            const initialCandidates = await fetchScannerCandidates();
+            setCandidates(initialCandidates);
+            if (initialCandidates.length > 0) {
+                 showToast(`${initialCandidates.length} kayıtlı aday yüklendi.`, 'info');
+            }
+        } catch (error) {
+            showToast(`Kayıtlı adaylar yüklenemedi: ${error.message}`, 'error');
+        } finally {
+            setIsFetchingInitial(false);
+        }
+    }, [fetchScannerCandidates, showToast]);
+
+    useEffect(() => {
+        loadInitialCandidates();
+    }, [loadInitialCandidates]);
+
+
     const handleScan = async () => {
-        setIsLoading(true);
-        setCandidates([]);
-        showToast('Potansiyel fırsatlar için piyasa taranıyor...', 'info');
-        
-        // YENİ: Kullanıcıya ilk geri bildirimi ver
-        setLoadingStage('Piyasa verileri çekiliyor ve filtre uygulanıyor...');
+        setIsScanning(true);
+        setCandidates([]); // Yeni tarama başladığında listeyi hemen temizle
+        showToast('Yeni tarama başlatıldı...', 'info');
+        setLoadingStage('Piyasa verileri çekiliyor ve filtreleniyor...');
         
         try {
             const result = await runScannerCandidates();
-            
-            setLoadingStage(`Filtreden geçen ${result.length} aday bulundu.`);
             setCandidates(result);
-            showToast(`${result.length} potansiyel fırsat bulundu.`, 'success');
+            showToast(`${result.length} potansiyel fırsat bulundu ve kaydedildi.`, 'success');
         } catch (error) {
             showToast(`Tarama sırasında bir hata oluştu: ${error.message}`, 'error');
         } finally {
-            setIsLoading(false);
-            setLoadingStage(''); // İşlem bitince aşamayı temizle
+            setIsScanning(false);
+            setLoadingStage('');
         }
     };
     
+    // Tek bir adayı yenileme fonksiyonu
+    const handleRefresh = async (symbol) => {
+        setRefreshingSymbol(symbol);
+        try {
+            const refreshedData = await refreshScannerCandidate(symbol);
+            setCandidates(currentCandidates =>
+                currentCandidates.map(c => (c.symbol === symbol ? refreshedData : c))
+            );
+            showToast(`${symbol} verileri yenilendi.`, 'success');
+        } catch (error) {
+             showToast(`Yenileme hatası: ${error.message}`, 'error');
+        } finally {
+            setRefreshingSymbol(null);
+        }
+    };
+
     const handleAnalyze = useCallback(async (candidate) => {
         setAnalyzingSymbol(candidate.symbol);
         try {
@@ -56,12 +90,11 @@ export const ScannerPage = () => {
                         <h2 className="text-2xl font-bold text-white flex items-center gap-3">
                             <ScanSearch size={24} /> İnteraktif Fırsat Tarayıcı
                         </h2>
-                        <p className="text-sm text-gray-400 mt-1">Piyasayı potansiyel fırsatlar için tarayın ve sadece seçtiğiniz adayları AI ile analiz edin.</p>
+                        <p className="text-sm text-gray-400 mt-1">Piyasayı potansiyel fırsatlar için tarayın, listeyi yenileyin ve seçtiğiniz adayları AI ile analiz edin.</p>
                     </div>
-                    {/* GÜNCELLENDİ: Buton, yükleme aşamasını gösterecek şekilde dinamik hale getirildi. */}
-                    <button onClick={handleScan} disabled={isLoading} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-md flex justify-center items-center gap-2 shrink-0 disabled:bg-gray-600 disabled:cursor-not-allowed min-w-[240px]">
-                        {isLoading ? <Loader2 className="animate-spin" size={20} /> : <PlayCircle size={20} />}
-                        {isLoading ? loadingStage : 'Potansiyel Fırsatları Tara'}
+                    <button onClick={handleScan} disabled={isScanning} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-md flex justify-center items-center gap-2 shrink-0 disabled:bg-gray-600 disabled:cursor-not-allowed min-w-[240px]">
+                        {isScanning ? <Loader2 className="animate-spin" size={20} /> : <PlayCircle size={20} />}
+                        {isScanning ? loadingStage : 'Yeni Tarama Başlat'}
                     </button>
                 </div>
             </div>
@@ -76,34 +109,43 @@ export const ScannerPage = () => {
                                 <th scope="col" className="px-4 py-3">Kaynak</th>
                                 <th scope="col" className="px-4 py-3">RSI</th>
                                 <th scope="col" className="px-4 py-3">ADX</th>
-                                <th scope="col" className="px-4 py-3 text-center">Eylem</th>
+                                <th scope="col" className="px-4 py-3">Son Güncelleme</th>
+                                <th scope="col" className="px-4 py-3 text-center">Eylemler</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {/* GÜNCELLENDİ: Yükleme göstergesi de artık aşamayı belirtiyor. */}
-                            {isLoading && candidates.length === 0 && (
-                                <tr><td colSpan="5" className="text-center p-8 text-gray-400">
+                            {(isFetchingInitial || (isScanning && candidates.length === 0)) && (
+                                <tr><td colSpan="6" className="text-center p-8 text-gray-400">
                                     <Loader2 className="animate-spin text-white mx-auto mb-2" />
-                                    {loadingStage}
+                                    {isScanning ? loadingStage : 'Kayıtlı adaylar yükleniyor...'}
                                 </td></tr>
                             )}
-                            {!isLoading && candidates.length === 0 && (
-                                <tr><td colSpan="5" className="text-center p-8 text-gray-400">Henüz taranmış aday bulunmuyor. Taramayı başlatın.</td></tr>
+                            {!isFetchingInitial && !isScanning && candidates.length === 0 && (
+                                <tr><td colSpan="6" className="text-center p-8 text-gray-400">Kayıtlı aday bulunamadı. Yeni bir tarama başlatın.</td></tr>
                             )}
-                            {candidates.map(c => (
+                            {candidates.map(c => {
+                                const isRowRefreshing = refreshingSymbol === c.symbol;
+                                const isRowAnalyzing = analyzingSymbol === c.symbol;
+                                return (
                                 <tr key={c.symbol} className="border-b border-gray-700 hover:bg-gray-900/30">
                                     <td className="px-4 py-3 font-medium text-white">{c.symbol}</td>
                                     <td className="px-4 py-3 text-gray-400">{c.source}</td>
-                                    <td className={`px-4 py-3 font-semibold ${c.indicators.RSI > 65 ? 'text-red-400' : 'text-green-400'}`}>{c.indicators.RSI}</td>
-                                    <td className="px-4 py-3 text-blue-300">{c.indicators.ADX}</td>
+                                    <td className={`px-4 py-3 font-semibold ${c.indicators.RSI > 65 ? 'text-red-400' : 'text-green-400'}`}>{c.indicators.RSI.toFixed(2)}</td>
+                                    <td className="px-4 py-3 text-blue-300">{c.indicators.ADX.toFixed(2)}</td>
+                                    <td className="px-4 py-3 text-gray-500 text-xs">{new Date(c.last_updated).toLocaleString('tr-TR')}</td>
                                     <td className="px-4 py-3 text-center">
-                                        <button onClick={() => handleAnalyze(c)} disabled={analyzingSymbol === c.symbol} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1 text-xs rounded-md flex items-center gap-1.5 disabled:bg-gray-600">
-                                            {analyzingSymbol === c.symbol ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
-                                            {analyzingSymbol === c.symbol ? 'Analiz...' : 'Analiz Et'}
-                                        </button>
+                                        <div className="flex justify-center items-center gap-2">
+                                            <button onClick={() => handleAnalyze(c)} disabled={isRowAnalyzing || isRowRefreshing} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1 text-xs rounded-md flex items-center gap-1.5 disabled:bg-gray-600 disabled:cursor-not-allowed">
+                                                {isRowAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
+                                                Analiz
+                                            </button>
+                                            <button onClick={() => handleRefresh(c.symbol)} disabled={isRowRefreshing || isRowAnalyzing} className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white disabled:bg-gray-600 disabled:cursor-not-allowed">
+                                                {isRowRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
-                            ))}
+                            )})}
                         </tbody>
                     </table>
                 </div>

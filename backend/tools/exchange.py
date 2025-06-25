@@ -18,9 +18,8 @@ from .utils import _get_unified_symbol, _parse_symbol_timeframe_input, str_to_bo
 load_dotenv()
 exchange = None
 
-# DEĞİŞİKLİK: Basit in-memory cache mekanizması eklendi.
 indicator_cache = {}
-CACHE_TTL_SECONDS = 180  # 3 dakika
+CACHE_TTL_SECONDS = 180
 
 @retry(wait=wait_exponential(multiplier=2, min=4, max=30), stop=stop_after_attempt(3))
 def _load_markets_with_retry(exchange_instance):
@@ -89,15 +88,12 @@ def get_market_price(symbol: str) -> str:
 def get_technical_indicators(symbol_and_timeframe: str) -> dict:
     """
     Belirtilen sembol ve zaman aralığı için teknik göstergeleri hesaplar.
-    Bu fonksiyon, veri temizleme ve hata yönetimi ile daha dayanıklı hale getirilmiştir.
-    DEĞİŞİKLİK: Sonuçlar artık 3 dakika boyunca önbellekte tutulmaktadır.
+    Bu fonksiyon, NaN hatalarını önlemek için daha sağlam hale getirilmiştir.
     """
     now = time.time()
-    # Önbellekte geçerli veri var mı kontrol et
     if symbol_and_timeframe in indicator_cache:
         cached_result, timestamp = indicator_cache[symbol_and_timeframe]
         if (now - timestamp) < CACHE_TTL_SECONDS:
-            logging.info(f"İndikatörler önbellekten okundu: {symbol_and_timeframe}")
             return cached_result
 
     if not exchange:
@@ -106,120 +102,93 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
     symbol, timeframe = _parse_symbol_timeframe_input(symbol_and_timeframe)
     
     try:
-        bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=200)
-        if not bars or len(bars) < 50:
-            return {"status": "error", "message": f"Teknik analiz için yetersiz veri: {len(bars)} mum çubuğu bulundu."}
+        # NaN hatasını önlemek için daha fazla veri çekiyoruz
+        bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=500)
+        if not bars:
+            return {"status": "error", "message": f"Geçmiş veri bulunamadı: {symbol}."}
         
         df = pd.DataFrame(bars, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        
+        # Hesaplamalar için minimum veri gereksinimini artırdık
+        required_data_points = 100 
+        if len(df) < required_data_points:
+            return {"status": "error", "message": f"Teknik analiz için yetersiz veri: {len(df)}/{required_data_points} mum çubuğu bulundu."}
         
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df[col] = pd.to_numeric(df[col], errors='coerce')
         df.dropna(subset=['open', 'high', 'low', 'close', 'volume'], inplace=True)
         
-        if len(df) < 50:
-            return {"status": "error", "message": f"Veri temizliğinden sonra yetersiz veri: {len(df)} mum çubuğu kaldı."}
+        if len(df) < required_data_points:
+            return {"status": "error", "message": f"Veri temizliğinden sonra yetersiz veri: {len(df)}/{required_data_points} mum çubuğu kaldı."}
 
+        # İndikatörleri hesapla
         df.ta.rsi(length=14, append=True)
-        df.ta.macd(fast=12, slow=26, signal=9, append=True)
-        df.ta.bbands(length=20, std=2, append=True)
-        df.ta.stoch(k=14, d=3, smooth_k=3, append=True)
         df.ta.adx(length=14, append=True)
+        
+        # Hesaplama sonrası NaN içeren tüm satırları at
+        df.dropna(inplace=True)
+        if df.empty:
+            logging.warning(f"İndikatör hesaplaması sonrası tüm veriler NaN içerdiği için atıldı. Sembol: {symbol}, Zaman Aralığı: {timeframe}")
+            return {"status": "error", "message": f"Hesaplama sonrası geçerli veri kalmadı. Sembol: {symbol}"}
 
         last = df.iloc[-1]
         
+        # GÜNCELLEME: Değerleri daha güvenli alıp, NaN olup olmadıklarını kontrol ediyoruz.
+        rsi_val = last.get('RSI_14')
+        adx_val = last.get('ADX_14')
+
+        if rsi_val is None or pd.isna(rsi_val) or adx_val is None or pd.isna(adx_val):
+            logging.warning(f"İndikatör hesaplaması sonrası geçersiz değerler. RSI: {rsi_val}, ADX: {adx_val}. Sembol: {symbol}")
+            return {"status": "error", "message": f"Hesaplama sonrası geçersiz gösterge değeri. Sembol: {symbol}"}
+
         indicators = {
-            "rsi": last.get('RSI_14'), "macd_line": last.get('MACD_12_26_9'), "macd_signal": last.get('MACDs_12_26_9'),
-            "bband_lower": last.get('BBL_20_2.0'), "bband_middle": last.get('BBM_20_2.0'), "bband_upper": last.get('BBU_20_2.0'),
-            "stoch_k": last.get('STOCHk_14_3_3'), "stoch_d": last.get('STOCHd_14_3_3'), "adx": last.get('ADX_14')
+            "RSI": float(rsi_val),
+            "ADX": float(adx_val)
         }
         
-        if any(value is None or pd.isna(value) for value in indicators.values()):
-            logging.warning(f"İndikatör hesaplaması sonrası NaN değeri bulundu. Sembol: {symbol}, Zaman Aralığı: {timeframe}")
-            return {"status": "error", "message": f"İndikatör hesaplanamadı (Hesaplama Sonrası NaN). Sembol: {symbol}"}
-        
         result = {"status": "success", "data": indicators}
-        # Başarılı sonucu önbelleğe al
         indicator_cache[symbol_and_timeframe] = (result, now)
         return result
         
     except Exception as e:
-        logging.error(f"Teknik gösterge alınırken genel hata: {e}", exc_info=True)
+        logging.error(f"Teknik gösterge alınırken genel hata ({symbol}): {e}", exc_info=True)
         return {"status": "error", "message": f"Beklenmedik bir hata oluştu: {str(e)}"}
 
+# ... (geri kalan fonksiyonlar aynı kalır)
 def get_volume_spikes(timeframe: str, period: int, multiplier: float, min_volume_usdt: int) -> list:
-    """
-    Belirtilen zaman aralığında, son mumu bir önceki 'period' mumun
-    ortalama hacminin 'multiplier' katından fazla olan işlem çiftlerini bulur.
-    """
-    if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future':
-        return []
-    
+    if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future': return []
     logging.info(f"Hacim patlaması taraması başlatıldı: Zaman Aralığı={timeframe}, Periyot={period}, Çarpan={multiplier}")
-    
     try:
-        # Önce tüm piyasaları al ve 24s hacme göre ön filtreleme yap
         all_tickers = exchange.fapiPublicGetTicker24hr()
-        filtered_tickers = [
-            t for t in all_tickers 
-            if t.get('symbol', '').endswith('USDT') and float(t.get('quoteVolume', 0)) > min_volume_usdt
-        ]
-        
+        filtered_tickers = [t for t in all_tickers if t.get('symbol', '').endswith('USDT') and float(t.get('quoteVolume', 0)) > min_volume_usdt]
         logging.info(f"Hacim analizi için {len(filtered_tickers)} adet sembol ön filtreden geçti.")
-        
         volume_spikes = []
-        
         for ticker in filtered_tickers:
             symbol = ticker['symbol']
             try:
-                # Gerekli mum sayısını çek (periyot + son mum)
                 bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=period + 1)
-                
-                if len(bars) < period + 1:
-                    continue # Yeterli veri yok, bir sonraki sembole geç
-                
+                if len(bars) < period + 1: continue
                 df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                
-                # Olası NaN değerlerini önlemek için sayısal tipe dönüştür
                 df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
                 df.dropna(subset=['volume'], inplace=True)
-
-                if len(df) < period + 1:
-                    continue
-
-                # Son mumu ve önceki periyodu ayır
+                if len(df) < period + 1: continue
                 last_volume = df['volume'].iloc[-1]
                 average_volume = df['volume'].iloc[-period-1:-1].mean()
-                
-                if pd.isna(last_volume) or pd.isna(average_volume) or average_volume == 0:
-                    continue
-                    
-                # Hacim patlamasını kontrol et
+                if pd.isna(last_volume) or pd.isna(average_volume) or average_volume == 0: continue
                 if last_volume > average_volume * multiplier:
-                    spike_info = {
-                        "symbol": _get_unified_symbol(symbol),
-                        "spike_ratio": last_volume / average_volume,
-                        "last_volume": last_volume,
-                        "average_volume": average_volume
-                    }
+                    spike_info = {"symbol": _get_unified_symbol(symbol), "spike_ratio": last_volume / average_volume, "last_volume": last_volume, "average_volume": average_volume}
                     volume_spikes.append(spike_info)
                     logging.info(f"Hacim Patlaması Tespit Edildi: {symbol} | Oran: {spike_info['spike_ratio']:.2f}x")
-                    
-                # Rate limit'e takılmamak için her istek arasında kısa bir süre bekle
-                time.sleep(exchange.rateLimit / 1000) 
-            
+                time.sleep(exchange.rateLimit / 1000)
             except Exception as e:
-                # Tek bir semboldeki hata tüm döngüyü durdurmasın
                 logging.warning(f"{symbol} için hacim analizi sırasında hata: {e}")
                 continue
-
-        # En yüksek orana göre sırala
         volume_spikes.sort(key=lambda x: x['spike_ratio'], reverse=True)
         return volume_spikes
-
     except Exception as e:
         logging.error(f"Hacim patlaması listesi alınırken genel hata: {e}", exc_info=True)
         return []
-    
+
 def get_atr_value(symbol_and_timeframe: str) -> dict:
     if not exchange: return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
     try:
