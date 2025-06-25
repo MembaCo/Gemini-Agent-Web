@@ -1,12 +1,15 @@
 import React, { useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ScanSearch, PlayCircle, Loader2, Bot, Check, AlertTriangle } from 'lucide-react';
-import { AnalysisResultModal } from './DashboardPage'; // Dashboard'daki modalı yeniden kullanıyoruz
+// Analiz modalını Dashboard sayfasından yeniden kullanıyoruz. Bir önceki düzeltmemizle bu artık mümkün.
+import { AnalysisResultModal } from './DashboardPage';
 
 export const ScannerPage = () => {
     const { showToast, runScannerCandidates, runAnalysis } = useAuth();
 
     const [isLoading, setIsLoading] = useState(false);
+    // YENİ: Yüklemenin hangi aşamada olduğunu tutmak için yeni bir state.
+    const [loadingStage, setLoadingStage] = useState('');
     const [candidates, setCandidates] = useState([]);
     const [analyzingSymbol, setAnalyzingSymbol] = useState(null);
     const [analysisResult, setAnalysisResult] = useState(null);
@@ -15,14 +18,21 @@ export const ScannerPage = () => {
         setIsLoading(true);
         setCandidates([]);
         showToast('Potansiyel fırsatlar için piyasa taranıyor...', 'info');
+        
+        // YENİ: Kullanıcıya ilk geri bildirimi ver
+        setLoadingStage('Piyasa verileri çekiliyor ve filtre uygulanıyor...');
+        
         try {
             const result = await runScannerCandidates();
+            
+            setLoadingStage(`Filtreden geçen ${result.length} aday bulundu.`);
             setCandidates(result);
             showToast(`${result.length} potansiyel fırsat bulundu.`, 'success');
         } catch (error) {
             showToast(`Tarama sırasında bir hata oluştu: ${error.message}`, 'error');
         } finally {
             setIsLoading(false);
+            setLoadingStage(''); // İşlem bitince aşamayı temizle
         }
     };
     
@@ -48,9 +58,10 @@ export const ScannerPage = () => {
                         </h2>
                         <p className="text-sm text-gray-400 mt-1">Piyasayı potansiyel fırsatlar için tarayın ve sadece seçtiğiniz adayları AI ile analiz edin.</p>
                     </div>
-                    <button onClick={handleScan} disabled={isLoading} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-md flex justify-center items-center gap-2 shrink-0">
+                    {/* GÜNCELLENDİ: Buton, yükleme aşamasını gösterecek şekilde dinamik hale getirildi. */}
+                    <button onClick={handleScan} disabled={isLoading} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-md flex justify-center items-center gap-2 shrink-0 disabled:bg-gray-600 disabled:cursor-not-allowed min-w-[240px]">
                         {isLoading ? <Loader2 className="animate-spin" size={20} /> : <PlayCircle size={20} />}
-                        {isLoading ? 'Taranıyor...' : 'Potansiyel Fırsatları Tara'}
+                        {isLoading ? loadingStage : 'Potansiyel Fırsatları Tara'}
                     </button>
                 </div>
             </div>
@@ -69,8 +80,12 @@ export const ScannerPage = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {isLoading && (
-                                <tr><td colSpan="5" className="text-center p-8"><Loader2 className="animate-spin text-white mx-auto" /></td></tr>
+                            {/* GÜNCELLENDİ: Yükleme göstergesi de artık aşamayı belirtiyor. */}
+                            {isLoading && candidates.length === 0 && (
+                                <tr><td colSpan="5" className="text-center p-8 text-gray-400">
+                                    <Loader2 className="animate-spin text-white mx-auto mb-2" />
+                                    {loadingStage}
+                                </td></tr>
                             )}
                             {!isLoading && candidates.length === 0 && (
                                 <tr><td colSpan="5" className="text-center p-8 text-gray-400">Henüz taranmış aday bulunmuyor. Taramayı başlatın.</td></tr>
@@ -84,7 +99,7 @@ export const ScannerPage = () => {
                                     <td className="px-4 py-3 text-center">
                                         <button onClick={() => handleAnalyze(c)} disabled={analyzingSymbol === c.symbol} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1 text-xs rounded-md flex items-center gap-1.5 disabled:bg-gray-600">
                                             {analyzingSymbol === c.symbol ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
-                                            Analiz Et
+                                            {analyzingSymbol === c.symbol ? 'Analiz...' : 'Analiz Et'}
                                         </button>
                                     </td>
                                 </tr>
@@ -98,7 +113,10 @@ export const ScannerPage = () => {
                 result={analysisResult} 
                 isVisible={!!analysisResult} 
                 onClose={() => setAnalysisResult(null)} 
-                onConfirmTrade={() => { /* Bu sayfadan doğrudan işlem açılmayacak, modal sadece bilgi verir */ setAnalysisResult(null); showToast('İşlem açmak için Dashboard sayfasını kullanın.', 'info'); }} 
+                onConfirmTrade={() => { 
+                    setAnalysisResult(null); 
+                    showToast('İşlem açmak için Dashboard sayfasını kullanın.', 'info'); 
+                }} 
             />
         </div>
     );

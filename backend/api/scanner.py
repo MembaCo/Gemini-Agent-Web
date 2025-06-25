@@ -10,7 +10,7 @@ router = APIRouter(
     tags=["Scanner"]
 )
 
-# === YENİ ENDPOINT ===
+# === GÜNCELLENDİ: Endpoint artık asenkron çalışıyor ===
 @router.post("/candidates", summary="AI analizi için potansiyel adayları tara ve listele")
 async def get_candidates():
     """
@@ -20,11 +20,13 @@ async def get_candidates():
     """
     logging.info("API: Tarayıcı aday listesi için istek alındı.")
     try:
-        candidates = scanner.get_scan_candidates()
+        # Optimize edilmiş yeni asenkron fonksiyonu 'await' ile çağırıyoruz
+        candidates = await scanner.get_scan_candidates()
         return candidates
     except Exception as e:
         logging.error(f"Aday tarama API'sinde kritik hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Adaylar taranırken bir sunucu hatası oluştu: {str(e)}")
+
 
 # Eski endpoint'i kaldırabilir veya bırakabiliriz. Şimdilik bırakalım.
 @router.post("/run", summary="DEPRECATED: Proaktif tarayıcıyı manuel olarak tetikle")
@@ -33,4 +35,3 @@ async def run_manual_scan():
     Bu endpoint artık kullanımdan kaldırılmıştır. Lütfen /candidates kullanın.
     """
     return scanner.execute_single_scan_cycle()
-
