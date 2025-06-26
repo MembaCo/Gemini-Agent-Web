@@ -41,16 +41,26 @@ async def lifespan(app: FastAPI):
     database.init_db()
     app_config.load_config()
     
+    # Global borsa örneğini başlat
     exchange_tools.initialize_exchange(app_config.settings.get('DEFAULT_MARKET_TYPE'))
-    agent.initialize_agent()
     
-    # === YENİ KOD BAŞLANGICI ===
-    # Borsa bağlantısı kurulduktan sonra pozisyonları senkronize et
+    # === YENİ KOD BAŞLANGICI: Scanner objesini lifespan içinde başlat ===
+    # Scanner objesini, exchange başlatıldıktan sonra tek seferlik başlat
+    if scanner._scanner_instance is None: # Tekrar başlatmayı önlemek için kontrol et
+        try:
+            scanner._scanner_instance = scanner.Scanner(exchange_tools.exchange)
+            logging.info("Tarayıcı modülü başarıyla başlatıldı.")
+        except Exception as e:
+            logging.critical(f"Tarayıcı modülü başlatılırken kritik hata: {e}", exc_info=True)
+            raise e # Tarayıcı başlatılamazsa uygulamayı durdur
+    # === YENİ KOD SONU ===
+
+    agent.initialize_agent() # Agent'ın LLM araçları exchange'e ihtiyaç duyar, bu yüzden exchange'den sonra başlat.
+    
     try:
         position_manager.sync_positions_on_startup()
     except Exception as e:
         logging.critical(f"Uygulama başlangıcında pozisyon senkronizasyonu başarısız oldu: {e}")
-    # === YENİ KOD SONU ===
     
     telegram_app = create_telegram_app()
     if telegram_app:
@@ -115,4 +125,6 @@ except RuntimeError:
     logging.warning("Statik dosyalar ('static' klasörü) bulunamadı. Sadece API modunda çalışılıyor.")
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # reload=True, Telegram bot Conflict hatasına neden olabilir
+    # Sadece geliştirme ortamında kullanın ve canlıda kapatın.
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)

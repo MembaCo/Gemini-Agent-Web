@@ -4,7 +4,7 @@
 import logging
 from urllib.parse import unquote
 from fastapi import APIRouter, HTTPException
-from core import scanner
+from core import scanner # Bu, core.scanner modülünü import eder
 import database
 from tools import get_technical_indicators, _get_unified_symbol
 
@@ -35,8 +35,8 @@ async def run_new_scan_and_save_candidates():
     """
     logging.info("API: Yeni tarama ve kaydetme isteği alındı.")
     try:
-        # scan_result artık {"total_scanned": X, "found_candidates": [...]} formatında bir sözlük
-        scan_result = await scanner.get_scan_candidates()
+        # scanner.execute_single_scan_cycle() fonksiyonunu çağırın
+        scan_result = await scanner.execute_single_scan_cycle()
         
         # Veritabanına sadece bulunan adaylar listesini kaydet
         database.save_scanner_candidates(scan_result["found_candidates"])

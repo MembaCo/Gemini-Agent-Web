@@ -69,7 +69,8 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         use_mta = app_config.settings.get('USE_MTA_ANALYSIS', True)
         entry_timeframe = '15m'
         
-        entry_indicators_result = get_technical_indicators(f"{unified_symbol},{entry_timeframe}")
+        # get_technical_indicators.invoke() olarak değiştirildi
+        entry_indicators_result = get_technical_indicators.invoke({"symbol_and_timeframe": f"{unified_symbol},{entry_timeframe}"})
         if entry_indicators_result.get("status") != "success":
             raise ValueError(f"Teknik veri alınamadı: {entry_indicators_result.get('message')}")
         entry_indicators_data = entry_indicators_result["data"]
@@ -77,7 +78,8 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         final_prompt = ""
         if use_mta:
             trend_timeframe = app_config.settings.get('MTA_TREND_TIMEFRAME', '4h')
-            trend_indicators_result = get_technical_indicators(f"{unified_symbol},{trend_timeframe}")
+            # get_technical_indicators.invoke() olarak değiştirildi
+            trend_indicators_result = get_technical_indicators.invoke({"symbol_and_timeframe": f"{unified_symbol},{trend_timeframe}"})
             if trend_indicators_result.get("status") != "success":
                  raise ValueError(f"Trend verisi alınamadı: {trend_indicators_result.get('message')}")
             trend_indicators_data = trend_indicators_result["data"]

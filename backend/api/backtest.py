@@ -1,58 +1,64 @@
 # backend/api/backtest.py
 
-from flask import Blueprint, request, jsonify
-from pydantic import ValidationError
+from fastapi import APIRouter, Request, HTTPException, Depends
+from pydantic import ValidationError, Field, conint, constr
+from typing import Dict, Any
+import logging # Standard logging modülü eklendi
 
 from core.backtester import Backtester
-from core.security import token_required
-from tools.utils import log
-# Oluşturduğumuz Pydantic modellerini ve hata formatlama fonksiyonunu import ediyoruz
-from .schemas import BacktestRunRequest, format_pydantic_errors
+from core.security import get_current_user # Kimlik doğrulama için gerekli
+from .schemas import BacktestRunRequest, format_pydantic_errors # format_pydantic_errors hala kullanılabilir durumda
 
-backtest_bp = Blueprint('backtest_bp', __name__)
+# BacktestRunRequest şemasına initial_balance alanını eklemek için yeni bir model oluşturuldu
+class BacktestRunRequestWithBalance(BacktestRunRequest):
+    initial_balance: conint(gt=0) = Field(..., description="Initial balance for backtesting")
 
-@backtest_bp.route('/run', methods=['POST'])
-@token_required
-def run_backtest(current_user):
-    # 1. Gelen JSON verisini al
-    raw_data = request.get_json()
-    if not raw_data:
-        return jsonify({"error": "Request body must be a valid JSON."}), 400
+
+router = APIRouter(
+    prefix="/backtest", # Bu önek, main.py'deki /api ile birleşerek /api/backtest yolunu oluşturur
+    tags=["Backtest"],
+)
+
+@router.post("/run", summary="Geriye dönük test çalıştır")
+async def run_backtest(
+    request_data: BacktestRunRequestWithBalance, # FastAPI, Pydantic modelini otomatik olarak enjekte eder
+    current_user: str = Depends(get_current_user) # Kimlik doğrulama bağımlılığı
+):
+    logging.info(f"Kullanıcı tarafından geriye dönük test isteği: {current_user}") # Kimlik doğrulanmış kullanıcıyı logla
 
     try:
-        # 2. Veriyi Pydantic modelimizle doğrula ve parse et
-        # Eğer veri geçersizse, Pydantic burada bir 'ValidationError' fırlatacaktır.
-        validated_data = BacktestRunRequest.model_validate(raw_data)
-    
-    except ValidationError as e:
-        # 3. Doğrulama hatasını yakala ve kullanıcıya anlaşılır bir şekilde geri dön
-        log(f"Backtest validation error: {e}", level='warning')
-        error_details = format_pydantic_errors(e)
-        return jsonify({"error": "Invalid input provided.", "details": error_details}), 400
+        # Pydantic doğrulaması FastAPI tarafından request_data tipiyle otomatik olarak yapılır,
+        # bu nedenle temel doğrulamalar için açık bir try-except ValidationError bloğuna gerek yoktur
+        # çünkü FastAPI, doğrulama hataları için HTTP 422 döndürür.
         
-    try:
-        # 4. Doğrulanmış ve temizlenmiş veriyi kullan
-        # .model_dump() metodu, Pydantic modelini tekrar bir dictionary'e çevirir.
-        backtester = Backtester()
+        logging.info(f"Geriye dönük test başlatılıyor: {request_data.symbol}")
+
+        # Backtester sınıfını initial_balance ile başlatın
+        backtester = Backtester(initial_balance=request_data.initial_balance)
+        
         results = backtester.run(
-            symbol=validated_data.symbol,
-            interval=validated_data.interval,
-            start_date=validated_data.start_date,
-            end_date=validated_data.end_date,
-            preset=validated_data.preset.model_dump()
+            symbol=request_data.symbol,
+            interval=request_data.interval,
+            start_date=request_data.start_date,
+            end_date=request_data.end_date,
+            preset=request_data.preset.model_dump() # Nested Pydantic modeli için .model_dump() doğru
         )
         
         if results is None:
-            return jsonify({"error": "Backtest failed to produce results. Check data availability for the period."}), 500
+            raise HTTPException(status_code=500, detail="Geriye dönük test sonuç üretemedi. Belirtilen dönem için veri olup olmadığını kontrol edin.")
         
-        # Sonuçları JSON'a çevrilebilir hale getiriyoruz.
-        # Özellikle balance_history'deki pandas timestamp'leri için bu önemlidir.
+        # Sonuçları JSON serileştirmesi için hazır hale getiriyoruz.
+        # Özellikle balance_history'deki pandas zaman damgaları için bu önemlidir.
         if 'balance_history' in results:
+            # Zaman damgası anahtarlarını JSON serileştirmesi için string'e dönüştür
             results['balance_history'] = {str(k): v for k, v in results['balance_history'].items()}
 
-        return jsonify(results), 200
-
+        return results # FastAPI, JSON serileştirmesini otomatik olarak halleder
+    
+    except HTTPException as http_exc:
+        # FastAPI'nin HTTP hatalarını tekrar fırlat
+        raise http_exc
     except Exception as e:
-        # 5. Core katmanından gelebilecek beklenmedik hataları yakala
-        log(f"Error during backtest run: {e}", level='error')
-        return jsonify({"error": "An internal server error occurred while running the backtest."}), 500
+        # Beklenmedik hataları logla ve HTTP 500 hatası döndür
+        logging.error(f"Geriye dönük test sırasında hata: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Geriye dönük test sırasında beklenmedik bir sunucu hatası oluştu: {str(e)}")

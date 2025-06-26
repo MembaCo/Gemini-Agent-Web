@@ -28,13 +28,15 @@ async def perform_new_analysis(request: NewAnalysisRequest):
         use_mta = app_config.settings.get('USE_MTA_ANALYSIS', True)
         trend_timeframe = app_config.settings.get('MTA_TREND_TIMEFRAME', '4h')
         
-        entry_indicators_result = get_technical_indicators(f"{unified_symbol},{request.timeframe}")
+        # get_technical_indicators.invoke() olarak değiştirildi
+        entry_indicators_result = get_technical_indicators.invoke({"symbol_and_timeframe": f"{unified_symbol},{request.timeframe}"})
         if entry_indicators_result.get("status") != "success":
             raise HTTPException(status_code=400, detail=f"Analiz yapılamadı: {entry_indicators_result.get('message')}")
             
         final_prompt = ""
         if use_mta:
-            trend_indicators_result = get_technical_indicators(f"{unified_symbol},{trend_timeframe}")
+            # get_technical_indicators.invoke() olarak değiştirildi
+            trend_indicators_result = get_technical_indicators.invoke({"symbol_and_timeframe": f"{unified_symbol},{trend_timeframe}"})
             if trend_indicators_result.get("status") != "success":
                 raise HTTPException(status_code=400, detail=f"Trend analizi ({trend_timeframe}) için veri alınamadı: {trend_indicators_result.get('message')}")
             final_prompt = core_agent.create_mta_analysis_prompt(unified_symbol, current_price, request.timeframe, entry_indicators_result["data"], trend_timeframe, trend_indicators_result["data"])

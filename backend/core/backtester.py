@@ -2,30 +2,38 @@
 
 import pandas as pd
 import numpy as np
-from tools.exchange import Exchange
-from tools.utils import get_config, log
+import logging # logging modülü eklendi
+# tools.utils'den log fonksiyonu kaldırıldı
+from core import app_config
+from tools.exchange import exchange as global_exchange_instance
+
 # Scanner sınıfı yerine, doğrudan modüler hale getirdiğimiz analiz fonksiyonlarını import ediyoruz.
 from .scanner import calculate_ma_signal, calculate_rsi_signal
 
 class Backtester:
-    def __init__(self):
-        self.config = get_config()
-        self.exchange_name = self.config['exchange']['name']
-        self.exchange = Exchange(self.exchange_name)
-        # Yapılandırmadan backtest'e özel ayarları alıyoruz.
-        self.backtest_config = self.config['backtester']
-        self.initial_balance = self.backtest_config['initial_balance']
+    # initial_balance artık __init__ parametresi olarak alınmalı
+    def __init__(self, initial_balance: float):
+        # Ayarları app_config.settings üzerinden alın
+        self.config = app_config.settings 
+        # exchange_name yerine DEFAULT_MARKET_TYPE kullanın
+        self.exchange_name = self.config['DEFAULT_MARKET_TYPE']
+        # Global exchange objesini kullanın
+        self.exchange = global_exchange_instance
+        # initial_balance __init__ metoduna dışarıdan sağlanmalı
+        self.initial_balance = initial_balance
         # Pozisyon büyüklüğü ve işlem komisyonu gibi daha gerçekçi parametreler ekliyoruz.
-        self.position_size_percent = self.backtest_config.get('position_size_percent', 1.0) # Kasanın %100'ü varsayılan
-        self.trading_fee_percent = self.backtest_config.get('trading_fee_percent', 0.1) # %0.1 komisyon varsayılan
+        # position_size_percent için RISK_PER_TRADE_PERCENT ayarını kullanın
+        self.position_size_percent = self.config.get('RISK_PER_TRADE_PERCENT', 1.0) 
+        # trading_fee_percent config'de yok, hardcode veya ek ayar gerektirir. Varsayılanı tutun.
+        self.trading_fee_percent = 0.1 # %0.1 komisyon varsayılan
 
     def run(self, symbol, interval, start_date, end_date, preset):
-        log(f"Starting backtest for {symbol} from {start_date} to {end_date}")
+        logging.info(f"Starting backtest for {symbol} from {start_date} to {end_date}") # log() -> logging.info()
 
         # 1. Veri Hazırlama ve Sinyal Üretimi (Vektörel Yaklaşım)
         df = self.exchange.get_ohlcv(symbol, interval, start_date=start_date, end_date=end_date)
         if df is None or df.empty:
-            log("No data found for the given period.", level='error')
+            logging.error("No data found for the given period.") # log() -> logging.error()
             return None
 
         # Tüm periyot için sinyalleri tek seferde, döngü olmadan hesaplıyoruz.
@@ -39,7 +47,7 @@ class Backtester:
         # 3. Performans Metriklerini Hesaplama
         final_results = self._calculate_performance_metrics(results, symbol, start_date, end_date)
 
-        log(f"Backtest finished. Final Balance: {final_results['final_balance']:.2f}, Total PnL: {final_results['total_pnl_percent']:.2%}")
+        logging.info(f"Backtest finished. Final Balance: {final_results['final_balance']:.2f}, Total PnL: {final_results['total_pnl_percent']:.2%}") # log() -> logging.info()
         return final_results
 
     def _generate_signals(self, df: pd.DataFrame, preset: dict) -> pd.Series:

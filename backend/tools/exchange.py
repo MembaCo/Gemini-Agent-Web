@@ -160,6 +160,30 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
         logging.error(f"Teknik gösterge alınırken genel hata ({symbol}): {e}", exc_info=True)
         return {"status": "error", "message": f"Beklenmedik bir hata oluştu: {str(e)}"}
 
+def get_symbols_from_exchange(exchange_instance, quote_currency: str) -> list:
+    """
+    Belirtilen borsadan sembolleri çeker ve belirli bir quote_currency ile filtreler.
+    """
+    if not exchange_instance:
+        logging.error("Borsa bağlantısı başlatılmadığı için semboller alınamıyor.")
+        return []
+    
+    try:
+        # ccxt'nin load_markets() fonksiyonu tüm piyasaları yükler
+        markets = exchange_instance.load_markets()
+        
+        symbols = []
+        for market_id, market_info in markets.items():
+            # Sadece alım satılabilir (active) ve doğru quote currency'ye sahip sembolleri al
+            if market_info['active'] and market_info['quote'] == quote_currency.upper():
+                symbols.append(market_info['symbol']) # 'BTC/USDT' gibi tam sembol adını ekle
+        
+        logging.info(f"{quote_currency} cinsinden {len(symbols)} adet sembol borsadan çekildi.")
+        return symbols
+    except Exception as e:
+        logging.error(f"Borsadan semboller alınırken hata oluştu: {e}", exc_info=True)
+        return []
+
 def get_volume_spikes(timeframe: str, period: int, multiplier: float, min_volume_usdt: int) -> list:
     """Hacim patlaması yaşayan sembolleri tarar."""
     # GEREKLİ IMPORT: Fonksiyon içinde yapılıyor.

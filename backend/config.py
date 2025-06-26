@@ -2,7 +2,7 @@
 # @author: Memba Co.
 
 # === UYGULAMA VERSİYONU ===
-APP_VERSION = "3.9.0-ui-revamp" # Web tabanlı versiyon
+APP_VERSION = "4.0.0-beta" # Web tabanlı versiyon
 
 # === YAPAY ZEKA MODEL AYARI ===
 GEMINI_MODEL = 'gemini-1.5-flash'
