@@ -5,10 +5,11 @@
 import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional, List # YENİ: Optional ve List import edildi
+from typing import Optional, List
 
 import database
 from core import app_config, scanner
+from config import APP_VERSION as CONFIG_APP_VERSION # config.py'den APP_VERSION'ı import edin
 
 router = APIRouter(
     prefix="/settings",
@@ -96,16 +97,11 @@ async def get_settings():
     try:
         settings = database.get_all_settings()
         
-        # === DEĞİŞTİRİLECEK SATIR BURASI ===
-        # Hatalı olan bu satırı:
-        # settings['APP_VERSION'] = app_config.APP_VERSION
-        
-        # Aşağıdaki doğru satır ile değiştirin:
-        settings['APP_VERSION'] = "3.9.0-ui-revamp" # Arayüzde kullanılan güncel versiyon
+        # Düzeltildi: backend/config.py dosyasındaki APP_VERSION'ı kullanın
+        settings['APP_VERSION'] = CONFIG_APP_VERSION
         
         return settings
     except Exception as e:
-        # Bu satırda hata `e` yerine `str(e)` olarak değiştirilebilir, ancak mevcut hali de çalışır.
         logging.error(f"Ayarlar okunurken hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Sunucu ayarları okunurken bir hata oluştu.")
 

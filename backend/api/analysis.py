@@ -8,7 +8,7 @@ import logging
 from ccxt.base.errors import BadSymbol
 
 from core import agent as core_agent, app_config
-from tools import get_technical_indicators, _get_unified_symbol, _fetch_price_natively
+from tools import get_technical_indicators, _get_unified_symbol, _fetch_price_natively # Düzeltildi: get_technical_indicators doğrudan import edildi
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
 
@@ -28,15 +28,15 @@ async def perform_new_analysis(request: NewAnalysisRequest):
         use_mta = app_config.settings.get('USE_MTA_ANALYSIS', True)
         trend_timeframe = app_config.settings.get('MTA_TREND_TIMEFRAME', '4h')
         
-        # get_technical_indicators.invoke() olarak değiştirildi
-        entry_indicators_result = get_technical_indicators.invoke({"symbol_and_timeframe": f"{unified_symbol},{request.timeframe}"})
+        # Düzeltildi: get_technical_indicators.invoke() yerine get_technical_indicators() çağrıldı
+        entry_indicators_result = get_technical_indicators(symbol_and_timeframe=f"{unified_symbol},{request.timeframe}")
         if entry_indicators_result.get("status") != "success":
             raise HTTPException(status_code=400, detail=f"Analiz yapılamadı: {entry_indicators_result.get('message')}")
             
         final_prompt = ""
         if use_mta:
-            # get_technical_indicators.invoke() olarak değiştirildi
-            trend_indicators_result = get_technical_indicators.invoke({"symbol_and_timeframe": f"{unified_symbol},{trend_timeframe}"})
+            # Düzeltildi: get_technical_indicators.invoke() yerine get_technical_indicators() çağrıldı
+            trend_indicators_result = get_technical_indicators(symbol_and_timeframe=f"{unified_symbol},{trend_timeframe}")
             if trend_indicators_result.get("status") != "success":
                 raise HTTPException(status_code=400, detail=f"Trend analizi ({trend_timeframe}) için veri alınamadı: {trend_indicators_result.get('message')}")
             final_prompt = core_agent.create_mta_analysis_prompt(unified_symbol, current_price, request.timeframe, entry_indicators_result["data"], trend_timeframe, trend_indicators_result["data"])

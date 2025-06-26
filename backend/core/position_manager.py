@@ -73,8 +73,8 @@ def sync_positions_on_startup():
                 
                 # Zaman aralığı bilinmediği için varsayılan bir değer kullanıyoruz
                 timeframe = '15m'
-                # get_atr_value.invoke() olarak değiştirildi
-                atr_result = get_atr_value.invoke({"symbol_and_timeframe": f"{symbol_unified},{timeframe}"})
+                # Düzeltildi: get_atr_value.invoke() yerine get_atr_value() çağrıldı
+                atr_result = get_atr_value(symbol_and_timeframe=f"{symbol_unified},{timeframe}")
                 if atr_result.get("status") != "success":
                     logging.error(f"'{symbol_unified}' için ATR alınamadı, içe aktarılamıyor. Mesaj: {atr_result.get('message')}")
                     continue

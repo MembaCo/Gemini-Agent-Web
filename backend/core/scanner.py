@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 from core import app_config, agent
 from core.trader import open_new_trade, TradeException
-from tools.exchange import exchange as global_exchange_instance, get_symbols_from_exchange, get_top_gainers_losers, get_volume_spikes, get_technical_indicators
+from tools.exchange import exchange as global_exchange_instance, get_symbols_from_exchange, get_top_gainers_losers, get_volume_spikes, get_technical_indicators # Düzeltildi: get_technical_indicators doğrudan import edildi
 from tools.utils import _get_unified_symbol
 from ccxt.base.errors import ExchangeError, NetworkError
 
@@ -251,8 +251,8 @@ async def execute_single_scan_cycle():
                     logging.warning(f"{s} için yetersiz temizlenmiş OHLCV verisi, analiz atlanıyor.")
                     return None
 
-                # get_technical_indicators.invoke() aracılığıyla teknik göstergeler alınır
-                entry_indicators_result = get_technical_indicators.invoke({"symbol_and_timeframe": f"{s},{entry_timeframe}"})
+                # Düzeltildi: get_technical_indicators.invoke() yerine get_technical_indicators() çağrıldı
+                entry_indicators_result = get_technical_indicators(symbol_and_timeframe=f"{s},{entry_timeframe}")
                 if entry_indicators_result.get("status") != "success":
                     logging.warning(f"{s} ({entry_timeframe}) için teknik veri alınamadı: {entry_indicators_result.get('message')}")
                     return None
@@ -261,7 +261,8 @@ async def execute_single_scan_cycle():
 
                 final_prompt = ""
                 if use_mta:
-                    trend_indicators_result = get_technical_indicators.invoke({"symbol_and_timeframe": f"{s},{trend_timeframe}"})
+                    # Düzeltildi: get_technical_indicators.invoke() yerine get_technical_indicators() çağrıldı
+                    trend_indicators_result = get_technical_indicators(symbol_and_timeframe=f"{s},{trend_timeframe}")
                     if trend_indicators_result.get("status") != "success":
                         logging.warning(f"{s} ({trend_timeframe}) için trend verisi alınamadı: {trend_indicators_result.get('message')}")
                         return None
