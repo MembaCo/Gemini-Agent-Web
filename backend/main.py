@@ -7,7 +7,7 @@ import uvicorn
 import os
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, APIRouter, Depends
+from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 from starlette.responses import FileResponse
@@ -44,18 +44,9 @@ async def lifespan(app: FastAPI):
     # Global borsa örneğini başlat
     exchange_tools.initialize_exchange(app_config.settings.get('DEFAULT_MARKET_TYPE'))
     
-    # === YENİ KOD BAŞLANGICI: Scanner objesini lifespan içinde başlat ===
-    # Scanner objesini, exchange başlatıldıktan sonra tek seferlik başlat
-    if scanner._scanner_instance is None: # Tekrar başlatmayı önlemek için kontrol et
-        try:
-            scanner._scanner_instance = scanner.Scanner(exchange_tools.exchange)
-            logging.info("Tarayıcı modülü başarıyla başlatıldı.")
-        except Exception as e:
-            logging.critical(f"Tarayıcı modülü başlatılırken kritik hata: {e}", exc_info=True)
-            raise e # Tarayıcı başlatılamazsa uygulamayı durdur
-    # === YENİ KOD SONU ===
-
-    agent.initialize_agent() # Agent'ın LLM araçları exchange'e ihtiyaç duyar, bu yüzden exchange'den sonra başlat.
+    # Scanner modülü artık sınıf tabanlı olmadığından, ayrıca başlatılmasına gerek yoktur.
+    
+    agent.initialize_agent()
     
     try:
         position_manager.sync_positions_on_startup()
@@ -98,12 +89,11 @@ async def lifespan(app: FastAPI):
         logging.info("Telegram botu durduruldu.")
     scheduler.shutdown()
 
-# --- Geri kalan kodlar aynı kalır ---
-app = FastAPI(title="Gemini Trading Agent API", version="3.7.0-sync", lifespan=lifespan)
+app = FastAPI(title="Gemini Trading Agent API", version="4.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 api_router = APIRouter(prefix="/api")
-api_router.include_router(auth_router) # Koruma dışında
+api_router.include_router(auth_router)
 api_router.include_router(backtest_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(charts_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(analysis_router, dependencies=[Depends(get_current_user)])
@@ -114,17 +104,29 @@ api_router.include_router(scanner_router, dependencies=[Depends(get_current_user
 api_router.include_router(presets_router, dependencies=[Depends(get_current_user)])
 app.include_router(api_router)
 
+# === STATİK DOSYA SUNMA BÖLÜMÜ DÜZELTİLDİ ===
 try:
+    # Dockerfile, frontend dosyalarını /app/static içine koyduğu için
+    # doğrudan bu klasörü hedefliyoruz.
+    # main.py /app içinde çalıştığı için, göreceli yol /app/static olur.
     static_files_path = os.path.join(os.path.dirname(__file__), "static")
-    app.mount('/assets', StaticFiles(directory=os.path.join(static_files_path, "assets")), name='assets')
     
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_react_app(full_path: str):
-        return FileResponse(os.path.join(static_files_path, "index.html"))
-except RuntimeError:
-    logging.warning("Statik dosyalar ('static' klasörü) bulunamadı. Sadece API modunda çalışılıyor.")
+    if os.path.exists(static_files_path):
+        # '/assets' yolunu /app/static/assets klasörüne bağla
+        app.mount('/assets', StaticFiles(directory=os.path.join(static_files_path, "assets")), name='assets')
+        
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_react_app(full_path: str):
+            index_path = os.path.join(static_files_path, "index.html")
+            if os.path.exists(index_path):
+                return FileResponse(index_path)
+            # Eğer index.html bulunamazsa 404 hatası ver
+            raise HTTPException(status_code=404, detail="index.html not found")
+    else:
+        logging.warning(f"Statik dosyalar ('{static_files_path}') bulunamadı. Sadece API modunda çalışılıyor.")
+
+except Exception:
+    logging.warning("Statik dosya yolu ayarlanırken hata oluştu. Sadece API modunda çalışılıyor.")
 
 if __name__ == "__main__":
-    # reload=True, Telegram bot Conflict hatasına neden olabilir
-    # Sadece geliştirme ortamında kullanın ve canlıda kapatın.
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)

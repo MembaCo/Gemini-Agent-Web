@@ -16,13 +16,21 @@ export const AuthProvider = ({ children }) => {
         setToast({ message, type });
     }, []);
 
+    const logout = useCallback(() => {
+        localStorage.removeItem('authToken');
+        setToken(null);
+        setIsAuthenticated(false);
+        showToast('Başarıyla çıkış yapıldı.', 'info');
+    }, [showToast]);
+
     const apiFetch = useCallback(async (url, options = {}) => {
+        const currentToken = localStorage.getItem('authToken');
         const headers = {
             'Content-Type': 'application/json',
             ...options.headers,
         };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
+        if (currentToken) {
+            headers['Authorization'] = `Bearer ${currentToken}`;
         }
 
         const response = await fetch(`${API_URL}${url}`, { ...options, headers });
@@ -32,13 +40,22 @@ export const AuthProvider = ({ children }) => {
             showToast('Oturum süreniz doldu. Lütfen tekrar giriş yapın.', 'error');
             throw new Error('Unauthorized');
         }
-
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data.detail || `HTTP error! status: ${response.status}`);
+        
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.detail || `HTTP error! status: ${response.status}`);
+            }
+            return data;
+        } else {
+            if (!response.ok) {
+                 throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return; // No-content yanıtları için (örn. DELETE)
         }
-        return data;
-    }, [token, showToast]);
+
+    }, [logout, showToast]);
 
 
     const login = async (username, password) => {
@@ -69,13 +86,6 @@ export const AuthProvider = ({ children }) => {
             return false;
         }
     };
-
-    const logout = () => {
-        localStorage.removeItem('authToken');
-        setToken(null);
-        setIsAuthenticated(false);
-        showToast('Başarıyla çıkış yapıldı.', 'info');
-    };
     
     // API fonksiyonları
     const fetchData = useCallback(() => apiFetch('/dashboard/stats'), [apiFetch]);
@@ -94,9 +104,10 @@ export const AuthProvider = ({ children }) => {
     const deletePreset = useCallback((presetId) => apiFetch(`/presets/${presetId}`, { method: 'DELETE' }), [apiFetch]);
     
     // YENİ VE GÜNCELLENMİŞ SCANNER FONKSİYONLARI
-    const runScannerCandidates = useCallback(() => apiFetch('/scanner/candidates', { method: 'POST' }), [apiFetch]);
+    const runInteractiveScan = useCallback(() => apiFetch('/scanner/run-interactive-scan', { method: 'POST' }), [apiFetch]);
     const fetchScannerCandidates = useCallback(() => apiFetch('/scanner/candidates'), [apiFetch]);
     const refreshScannerCandidate = useCallback((symbol) => apiFetch(`/scanner/candidates/${encodeURIComponent(symbol)}/refresh`, { method: 'POST' }), [apiFetch]);
+    const runProactiveScan = useCallback(() => apiFetch('/scanner/run-proactive-scan', { method: 'POST' }), [apiFetch]);
 
 
     const value = {
@@ -122,9 +133,10 @@ export const AuthProvider = ({ children }) => {
         fetchPresets,
         savePreset,
         deletePreset,
-        runScannerCandidates,
+        runInteractiveScan,
         fetchScannerCandidates,
-        refreshScannerCandidate
+        refreshScannerCandidate,
+        runProactiveScan
     };
 
     return (

@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ScanSearch, PlayCircle, Loader2, Bot, RefreshCw, SlidersHorizontal, X, Info, Save } from 'lucide-react';
-// === YENİ: Ortak bileşenleri yeni dosyadan import ediyoruz ===
 import { Modal, Switch, TooltipWrapper, AnalysisResultModal } from './SharedComponents';
 
-// Tarayıcı Ayarları için özel olarak oluşturulmuş Modal
 const ScannerSettingsModal = ({ settings, isVisible, onClose, onSave, onSettingsChange }) => {
     const settingDefinitions = { 'PROACTIVE_SCAN_ENABLED': { description: "Aktifse, bot arka planda sürekli olarak piyasayı yeni işlem fırsatları için tarar." }, 'PROACTIVE_SCAN_INTERVAL_SECONDS': { description: "Proaktif Tarayıcının iki tarama döngüsü arasında kaç saniye bekleyeceğini belirler." }, 'PROACTIVE_SCAN_AUTO_CONFIRM': { description: "Tarayıcı bir fırsat bulduğunda, kullanıcı onayı olmadan otomatik olarak işlem açar. Yüksek risklidir." }, 'PROACTIVE_SCAN_USE_GAINERS_LOSERS': { description: "Tarama listesine Binance'in 'En Çok Yükselenler/Düşenler' listesini dahil eder." }, 'PROACTIVE_SCAN_TOP_N': { description: "Yükselenler/Düşenler listesinden kaç coinin analize dahil edileceği." }, 'PROACTIVE_SCAN_USE_VOLUME_SPIKE': { description: "Tarama listesine, işlem hacminde ani artış yaşayan ('Hacim Patlaması') coinleri dahil eder." }, 'PROACTIVE_SCAN_VOLUME_TIMEFRAME': { description: "Hacim analizi için kullanılacak zaman aralığı (örn: 1h, 4h)." }, 'PROACTIVE_SCAN_VOLUME_PERIOD': { description: "Hacim ortalaması için kaç mum geriye bakılacak." }, 'PROACTIVE_SCAN_VOLUME_MULTIPLIER': { description: "Son mumun hacmi, ortalamanın kaç katı olmalı." }, 'PROACTIVE_SCAN_MIN_VOLUME_USDT': { description: "Taranacak coinler için minimum 24 saatlik işlem hacmi (USDT cinsinden). Düşük hacimli coinleri filtreler." }, 'PROACTIVE_SCAN_BLACKLIST': { description: "Bu listedeki coinler (virgülle ayırın) taramalara asla dahil edilmez." }, 'PROACTIVE_SCAN_WHITELIST': { description: "Bu listedeki coinler (virgülle ayırın) her tarama döngüsünde mutlaka analize dahil edilir." }, };
     const renderInput = (key, value) => { if (typeof value === 'boolean') { return <Switch checked={value} onChange={(checked) => onSettingsChange(key, checked)} />; } if (typeof value === 'number') { return <input type="number" step={key.includes('PERCENT') ? "0.1" : "1"} value={value} onChange={e => onSettingsChange(key, parseFloat(e.target.value) || 0)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-28 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />; } if (Array.isArray(value)) { return <input type="text" value={value.join(', ')} onChange={e => onSettingsChange(key, e.target.value.split(',').map(s => s.trim().toUpperCase()).filter(s => s))} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />; } return <input type="text" value={value} onChange={e => onSettingsChange(key, e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1 w-full text-white" />; };
@@ -12,7 +10,7 @@ const ScannerSettingsModal = ({ settings, isVisible, onClose, onSave, onSettings
 };
 
 export const ScannerPage = () => {
-    const { showToast, runScannerCandidates, fetchScannerCandidates, refreshScannerCandidate, runAnalysis, fetchSettings, saveSettings, openPosition } = useAuth();
+    const { showToast, runInteractiveScan, fetchScannerCandidates, refreshScannerCandidate, runAnalysis, fetchSettings, saveSettings, openPosition } = useAuth();
     const [isScanning, setIsScanning] = useState(false);
     const [isFetchingInitial, setIsFetchingInitial] = useState(true);
     const [loadingStage, setLoadingStage] = useState('');
@@ -29,7 +27,28 @@ export const ScannerPage = () => {
     const handleSettingsChange = (key, value) => { setScannerSettings(prev => ({...prev, [key]: value})); };
     const loadInitialData = useCallback(async () => { setIsFetchingInitial(true); try { await Promise.all([ (async () => { const initialCandidates = await fetchScannerCandidates(); setCandidates(initialCandidates); })(), loadScannerSettings() ]); } catch (error) { showToast(`Sayfa verileri yüklenemedi: ${error.message}`, 'error'); } finally { setIsFetchingInitial(false); } }, [fetchScannerCandidates, loadScannerSettings, showToast]);
     useEffect(() => { loadInitialData(); }, [loadInitialData]);
-    const handleScan = async () => { setIsScanning(true); setCandidates([]); showToast('Yeni tarama başlatıldı...', 'info'); setLoadingStage('Piyasa verileri çekiliyor ve filtreleniyor...'); try { const result = await runScannerCandidates(); setCandidates(result.found_candidates); const foundCount = result.found_candidates.length; const scannedCount = result.total_scanned; if (foundCount > 0) { showToast(`${foundCount} potansiyel fırsat bulundu ve kaydedildi.`, 'success'); } else { showToast(`${scannedCount} aday tarandı ancak uygun fırsat bulunamadı.`, 'info'); } } catch (error) { showToast(`Tarama sırasında bir hata oluştu: ${error.message}`, 'error'); } finally { setIsScanning(false); setLoadingStage(''); } };
+    
+    const handleScan = async () => {
+        setIsScanning(true);
+        setCandidates([]);
+        showToast('Yeni interaktif tarama başlatıldı...', 'info');
+        setLoadingStage('Piyasa verileri ve temel göstergeler çekiliyor...');
+        try {
+            const newCandidates = await runInteractiveScan();
+            setCandidates(newCandidates);
+            if (newCandidates.length > 0) {
+                showToast(`${newCandidates.length} potansiyel aday bulundu ve listelendi.`, 'success');
+            } else {
+                showToast(`Tarama tamamlandı ancak filtrelere uyan aday bulunamadı.`, 'info');
+            }
+        } catch (error) {
+            showToast(`Tarama sırasında bir hata oluştu: ${error.message}`, 'error');
+        } finally {
+            setIsScanning(false);
+            setLoadingStage('');
+        }
+    };
+
     const handleRefresh = async (symbol) => { setRefreshingSymbol(symbol); try { const refreshedData = await refreshScannerCandidate(symbol); setCandidates(currentCandidates => currentCandidates.map(c => (c.symbol === symbol ? refreshedData : c)) ); showToast(`${symbol} verileri yenilendi.`, 'success'); } catch (error) { showToast(`Yenileme hatası: ${error.message}`, 'error'); } finally { setRefreshingSymbol(null); } };
     const handleAnalyze = useCallback(async (candidate) => { setAnalyzingSymbol(candidate.symbol); try { const result = await runAnalysis({ symbol: candidate.symbol, timeframe: candidate.timeframe }); setAnalysisResult(result); } catch (err) { showToast(err.message, 'error'); } finally { setAnalyzingSymbol(null); } }, [runAnalysis, showToast]);
     const handleConfirmTrade = useCallback(async (tradeData) => { setIsOpeningTrade(true); showToast(`${tradeData.symbol} için pozisyon açılıyor...`, 'info'); try { const result = await openPosition({ symbol: tradeData.symbol, recommendation: tradeData.recommendation, timeframe: tradeData.timeframe, price: tradeData.data.price, }); showToast(result.message || 'Pozisyon başarıyla açıldı!', 'success'); setAnalysisResult(null); } catch (err) { showToast(err.message, 'error'); } finally { setIsOpeningTrade(false); } }, [openPosition, showToast]);
@@ -57,26 +76,14 @@ export const ScannerPage = () => {
                             {!isFetchingInitial && candidates.length === 0 && ( <tr><td colSpan="6" className="text-center p-8 text-gray-400">Kayıtlı aday bulunamadı. Yeni bir tarama başlatın.</td></tr> )}
                             {candidates.map(c => {
                                 const isRowRefreshing = refreshingSymbol === c.symbol; const isRowAnalyzing = analyzingSymbol === c.symbol;
-                                return ( <tr key={c.symbol} className="border-b border-gray-700 hover:bg-gray-900/30"><td className="px-4 py-3 font-medium text-white">{c.symbol}</td><td className="px-4 py-3 text-gray-400">{c.source}</td><td className={`px-4 py-3 font-semibold ${c.indicators.RSI > 65 ? 'text-red-400' : 'text-green-400'}`}>{c.indicators.RSI.toFixed(2)}</td><td className="px-4 py-3 text-blue-300">{c.indicators.ADX.toFixed(2)}</td><td className="px-4 py-3 text-gray-500 text-xs">{new Date(c.last_updated).toLocaleString('tr-TR')}</td><td className="px-4 py-3 text-center"><div className="flex justify-center items-center gap-2"><button onClick={() => handleAnalyze(c)} disabled={isRowAnalyzing || isRowRefreshing} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1 text-xs rounded-md flex items-center gap-1.5 disabled:bg-gray-600 disabled:cursor-not-allowed">{isRowAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}Analiz</button><button onClick={() => handleRefresh(c.symbol)} disabled={isRowRefreshing || isRowAnalyzing} className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white disabled:bg-gray-600 disabled:cursor-not-allowed">{isRowRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}</button></div></td></tr> )
+                                return ( <tr key={c.symbol} className="border-b border-gray-700 hover:bg-gray-900/30"><td className="px-4 py-3 font-medium text-white">{c.symbol}</td><td className="px-4 py-3 text-gray-400">{c.source}</td><td className={`px-4 py-3 font-semibold ${c.indicators.RSI > 65 ? 'text-red-400' : c.indicators.RSI < 35 ? 'text-green-400' : ''}`}>{c.indicators.RSI.toFixed(2)}</td><td className="px-4 py-3 text-blue-300">{c.indicators.ADX.toFixed(2)}</td><td className="px-4 py-3 text-gray-500 text-xs">{new Date(c.last_updated).toLocaleString('tr-TR')}</td><td className="px-4 py-3 text-center"><div className="flex justify-center items-center gap-2"><button onClick={() => handleAnalyze(c)} disabled={isRowAnalyzing || isRowRefreshing} className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-3 py-1 text-xs rounded-md flex items-center gap-1.5 disabled:bg-gray-600 disabled:cursor-not-allowed">{isRowAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}Analiz</button><button onClick={() => handleRefresh(c.symbol)} disabled={isRowRefreshing || isRowAnalyzing} className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white disabled:bg-gray-600 disabled:cursor-not-allowed">{isRowRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}</button></div></td></tr> )
                             })}
                         </tbody>
                     </table>
                 </div>
             </div>
-            <AnalysisResultModal 
-                result={analysisResult} 
-                isVisible={!!analysisResult} 
-                onClose={() => setAnalysisResult(null)} 
-                onConfirmTrade={handleConfirmTrade} 
-                isOpeningTrade={isOpeningTrade}
-            />
-            <ScannerSettingsModal
-                settings={scannerSettings}
-                isVisible={isSettingsModalVisible}
-                onClose={() => setIsSettingsModalVisible(false)}
-                onSave={handleSaveSettings}
-                onSettingsChange={handleSettingsChange}
-            />
+            <AnalysisResultModal result={analysisResult} isVisible={!!analysisResult} onClose={() => setAnalysisResult(null)} onConfirmTrade={handleConfirmTrade} isOpeningTrade={isOpeningTrade}/>
+            <ScannerSettingsModal settings={scannerSettings} isVisible={isSettingsModalVisible} onClose={() => setIsSettingsModalVisible(false)} onSave={handleSaveSettings} onSettingsChange={handleSettingsChange}/>
         </div>
     );
 };
