@@ -53,6 +53,7 @@ TELEGRAM_ENABLED = True
 
 # === PROAKTİF TARAMA AYARLARI ===
 PROACTIVE_SCAN_ENABLED = True
+ORPHAN_ORDER_CHECK_INTERVAL_SECONDS = 300 # Yetim (pozisyonsuz) emirleri kontrol etme sıklığı (saniye).
 PROACTIVE_SCAN_INTERVAL_SECONDS = 900
 PROACTIVE_SCAN_AUTO_CONFIRM = False
 PROACTIVE_SCAN_IN_LOOP = False # Bu satır hatayı düzeltmek için eklendi.

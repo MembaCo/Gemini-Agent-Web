@@ -1,26 +1,23 @@
-# ==============================================================================
-# File: backend/api/settings.py
+# backend/api/settings.py
 # @author: Memba Co.
-# ==============================================================================
+
 import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List
 
 import database
-from core import app_config, scanner
-from config import APP_VERSION as CONFIG_APP_VERSION # config.py'den APP_VERSION'ı import edin
+from core import app_config, scanner, agent
+from config import APP_VERSION as CONFIG_APP_VERSION
 
 router = APIRouter(
     prefix="/settings",
     tags=["Settings"],
 )
 
-# === YENİ: Kısmi güncellemelere izin veren esnek Pydantic modeli ===
-# Artık her alan isteğe bağlı (Optional), bu da frontend'in sadece
-# değiştirmek istediği alanları göndermesine olanak tanır.
 class SettingsUpdate(BaseModel):
     GEMINI_MODEL: Optional[str] = None
+    GEMINI_MODEL_FALLBACK_ORDER: Optional[List[str]] = None # YENİ
     LIVE_TRADING: Optional[bool] = None
     DEFAULT_MARKET_TYPE: Optional[str] = None
     DEFAULT_ORDER_TYPE: Optional[str] = None
@@ -56,11 +53,14 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_VOLUME_MULTIPLIER: Optional[float] = None
     PROACTIVE_SCAN_VOLUME_PERIOD: Optional[int] = None
 
-# === YENİ KOD BAŞLANGICI: Yardımcı Fonksiyon (Değişiklik yok, sadece burada duruyor) ===
 def reschedule_jobs(scheduler, new_settings: dict):
     """Çalışan scheduler görevlerini yeni ayarlara göre günceller."""
     try:
-        # Arka plan görevlerini yeniden zamanlarken, ayarın gönderilip gönderilmediğini kontrol et
+        # GÜNCELLEME: Model ayarları değiştiğinde, agent'ı yeniden başlat
+        if 'GEMINI_MODEL' in new_settings or 'GEMINI_MODEL_FALLBACK_ORDER' in new_settings:
+            agent.initialize_agent()
+            logging.info("Gemini modeli veya yedek listesi değişti. AI ajanı yeni ayarlarla yeniden başlatıldı.")
+            
         if 'POSITION_CHECK_INTERVAL_SECONDS' in new_settings:
             scheduler.reschedule_job(
                 "position_checker_job",
@@ -71,7 +71,6 @@ def reschedule_jobs(scheduler, new_settings: dict):
 
         if 'PROACTIVE_SCAN_ENABLED' in new_settings or 'PROACTIVE_SCAN_INTERVAL_SECONDS' in new_settings:
             scanner_job = scheduler.get_job("scanner_job")
-            # En son ayarları doğrudan app_config'den oku, çünkü sadece bir ayar değişmiş olabilir
             is_enabled = app_config.settings['PROACTIVE_SCAN_ENABLED']
             interval = app_config.settings['PROACTIVE_SCAN_INTERVAL_SECONDS']
 
@@ -88,7 +87,6 @@ def reschedule_jobs(scheduler, new_settings: dict):
 
     except Exception as e:
         logging.error(f"Scheduler görevleri yeniden zamanlanırken hata oluştu: {e}", exc_info=True)
-# === YENİ KOD SONU ===
 
 
 @router.get("/", summary="Tüm uygulama ayarlarını al")
@@ -96,37 +94,29 @@ async def get_settings():
     """Tüm yapılandırma ayarlarını veritabanından okur ve döndürür."""
     try:
         settings = database.get_all_settings()
-        
-        # Düzeltildi: backend/config.py dosyasındaki APP_VERSION'ı kullanın
         settings['APP_VERSION'] = CONFIG_APP_VERSION
-        
         return settings
     except Exception as e:
         logging.error(f"Ayarlar okunurken hata: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Sunucu ayarları okunurken bir hata oluştu.")
+        raise HTTPException(status_code=500, detail="Sunucu ayarları okunurken bir sunucu hatası oluştu.")
 
 
 @router.put("/", summary="Uygulama ayarlarını güncelle")
-# === DEĞİŞTİRİLDİ: Artık esnek SettingsUpdate modelini kullanıyoruz ===
-async def update_settings(new_settings: SettingsUpdate, request: Request):
+async def update_settings_endpoint(new_settings: SettingsUpdate, request: Request):
     """
     Frontend'den gelen yeni ayarları alır, veritabanına kaydeder ve
     çalışan uygulamanın ayarlarını ve arka plan görevlerini anında günceller.
     """
     logging.info("API: Uygulama ayarlarını güncelleme isteği alındı.")
     try:
-        # .dict(exclude_unset=True) metodu, sadece frontend'den gönderilen
-        # (yani değeri None olmayan) alanları içeren bir sözlük oluşturur.
-        # Bu, kısmi güncellemenin anahtarıdır.
         update_data = new_settings.dict(exclude_unset=True)
 
         if not update_data:
             return {"message": "Güncellenecek herhangi bir ayar gönderilmedi."}
 
         database.update_settings(update_data)
-        app_config.load_config() # Yeni ayarları global state'e yükle
+        app_config.load_config()
         
-        # Scheduler'ı sadece etkilenen ayarlar değiştiyse yeniden zamanla
         scheduler = request.app.state.scheduler
         reschedule_jobs(scheduler, update_data)
         

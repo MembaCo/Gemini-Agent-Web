@@ -4,15 +4,19 @@
 # varsayılan değerleri ve açıklamalarını içerir.
 
 default_settings = {
-    # === YENİ SÜRÜM BİLGİSİ ===
-    # APP_VERSION artık backend tarafından yönetiliyor ve arayüzden değiştirilemez.
-    # Bu yüzden bu listeden kaldırıldı.
-
     # === UYGULAMA & MODEL AYARLARI ===
-    "GEMINI_MODEL": 'gemini-1.5-flash',     # Analiz için kullanılacak Google AI modeli.
+    "GEMINI_MODEL": 'gemini-1.5-flash',
+    # YENİ: Model Fallback (Yedek) Sırası. Bir modelin kotası dolduğunda,
+    # listedeki bir sonrakine otomatik olarak geçilir.
+    "GEMINI_MODEL_FALLBACK_ORDER": [
+        "gemini-1.5-flash",        # Hızlı ve ucuz, ilk deneme için ideal.
+        "gemini-2.5-flash",        # Biraz daha yetenekli ve maliyet-etkin.
+        "gemini-1.5-pro",          # Daha karmaşık durumlar için güçlü bir seçenek.
+        "gemini-2.5-pro",          # En güçlü model, son çare olarak.
+    ],
 
     # === CANLI İŞLEM AYARI ===
-    "LIVE_TRADING": True,                  # True ise gerçek parayla işlem yapar.
+    "LIVE_TRADING": True,
 
     # === TEMEL STRATEJİ AYARLARI ===
     "USE_MTA_ANALYSIS": True,               # Manuel analizlerde Çoklu Zaman Aralığı (MTA) analizi kullanılsın mı?
@@ -39,6 +43,7 @@ default_settings = {
 
     # === OTOMASYON & TARAYICI AYARLARI ===
     "POSITION_CHECK_INTERVAL_SECONDS": 60,  # Arka plan görevinin aktif pozisyonları kaç saniyede bir kontrol edeceği.
+    "ORPHAN_ORDER_CHECK_INTERVAL_SECONDS": 300, # Yetim (pozisyonsuz) emirleri kontrol etme sıklığı (saniye).
     "PROACTIVE_SCAN_ENABLED": False,        # Uygulama başladığında Proaktif Tarayıcı arka plan görevi çalışsın mı?
     "PROACTIVE_SCAN_INTERVAL_SECONDS": 900, # Proaktif Tarayıcının kaç saniyede bir piyasayı tarayacağı (15 dakika).
     "PROACTIVE_SCAN_AUTO_CONFIRM": False,   # Tarayıcı bir fırsat bulduğunda kullanıcı onayı olmadan otomatik işlem açsın mı?

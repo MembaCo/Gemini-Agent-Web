@@ -1,62 +1,120 @@
-# ==============================================================================
-# File: backend/core/agent.py
+# backend/core/agent.py
 # @author: Memba Co.
-# ==============================================================================
+
 import os
 import json
 import logging
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain import hub
-from dotenv import load_dotenv
+from google.api_core.exceptions import ResourceExhausted
 
 from core import app_config
-from tools import get_market_price, get_technical_indicators
-from tools.utils import str_to_bool
 
-load_dotenv()
+# --- Global Değişkenler ---
 llm = None
-agent_executor = None
+model_fallback_list = []
+current_model_index = 0
 
-def initialize_agent():
-    """Uygulama başladığında LLM'i ve LangChain Agent'ını başlatır."""
-    global llm, agent_executor
-    if llm and agent_executor:
+def _get_llm_instance(model_name: str) -> ChatGoogleGenerativeAI:
+    """Belirtilen model ismi için bir ChatGoogleGenerativeAI örneği oluşturur."""
+    # DÜZELTME: Kullanımdan kaldırılan 'convert_system_message_to_human' parametresi kaldırıldı.
+    return ChatGoogleGenerativeAI(model=model_name, temperature=0.1)
+
+def _initialize_model_list_and_llm():
+    """
+    Ayarlardan model listesini oluşturur ve ilk LLM örneğini başlatır.
+    """
+    global llm, model_fallback_list, current_model_index
+    
+    primary_model = app_config.settings.get('GEMINI_MODEL', 'gemini-1.5-flash')
+    fallback_order = app_config.settings.get('GEMINI_MODEL_FALLBACK_ORDER', [])
+    
+    # Birincil modeli listenin başına ekle ve tekrarları kaldırarak benzersiz bir liste oluştur
+    ordered_models = [primary_model]
+    for model in fallback_order:
+        if model not in ordered_models:
+            ordered_models.append(model)
+    
+    model_fallback_list = ordered_models
+    current_model_index = 0 # Her zaman ilk modelle başla
+    
+    if not model_fallback_list:
+        logging.critical("Kullanılacak hiçbir Gemini modeli belirtilmemiş. Lütfen ayarları kontrol edin.")
+        llm = None
         return
 
     try:
-        logging.info("LLM ve LangChain Agent başlatılıyor...")
-        os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
-        os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2", "false")
-        os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY", "")
-        os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT", "Gemini Trading Agent")
-        
-        llm = ChatGoogleGenerativeAI(model=app_config.settings['GEMINI_MODEL'], temperature=0.1)
-        
-        agent_tools = [get_market_price, get_technical_indicators]
-        prompt_template = hub.pull("hwchase17/react")
-        agent = create_react_agent(llm=llm, tools=agent_tools, prompt=prompt_template)
-        agent_executor = AgentExecutor(
-            agent=agent, tools=agent_tools, verbose=str_to_bool(os.getenv("AGENT_VERBOSE", "True")),
-            handle_parsing_errors="Lütfen JSON formatında geçerli bir yanıt ver.", max_iterations=7
-        )
-        logging.info("LLM ve Agent başarıyla başlatıldı.")
+        current_model_name = model_fallback_list[current_model_index]
+        llm = _get_llm_instance(current_model_name)
+        logging.info(f"AI Agent başarıyla başlatıldı. Aktif model: {current_model_name}")
+        logging.info(f"Model deneme sırası: {' -> '.join(model_fallback_list)}")
     except Exception as e:
-        logging.critical(f"LLM veya Agent başlatılırken kritik hata oluştu: {e}", exc_info=True)
-        raise e
+        logging.critical(f"{model_fallback_list[0]} modeli başlatılırken kritik hata: {e}", exc_info=True)
+        llm = None
+
+def switch_to_next_model():
+    """
+    Sıradaki modele geçer. Eğer liste bittiyse, başa döner ama kritik bir log atar.
+    """
+    global llm, current_model_index
+
+    current_model_index += 1
+    if current_model_index >= len(model_fallback_list):
+        logging.error("Tüm Gemini modellerinin kotaları tükendi. Tarama geçici olarak durduruldu. Listenin başına dönülüyor.")
+        current_model_index = 0 # Başa dön
+
+    next_model_name = model_fallback_list[current_model_index]
+    logging.warning(f"Kota aşıldı! Bir sonraki modele geçiliyor: {next_model_name}")
+    
+    try:
+        llm = _get_llm_instance(next_model_name)
+        logging.info(f"AI Agent, yeni aktif modelle güncellendi: {next_model_name}")
+        return True
+    except Exception as e:
+        logging.error(f"{next_model_name} modeline geçilirken hata: {e}", exc_info=True)
+        llm = None
+        return False
+
+def initialize_agent():
+    """Uygulama başladığında veya ayarlar değiştiğinde LLM'i başlatır/yeniden başlatır."""
+    os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
+    os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2", "false")
+    os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY", "")
+    os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT", "Gemini Trading Agent")
+    _initialize_model_list_and_llm()
+
+def llm_invoke_with_fallback(prompt: str):
+    """
+    LLM'i çağırır ve kota hatası durumunda otomatik olarak model değiştirip tekrar dener.
+    """
+    if not llm:
+        raise Exception("LLM örneği başlatılamadı. Lütfen yapılandırmayı kontrol edin.")
+
+    max_retries = len(model_fallback_list)
+    for attempt in range(max_retries):
+        try:
+            return llm.invoke(prompt)
+        except ResourceExhausted as e:
+            logging.warning(f"Kota hatası ({model_fallback_list[current_model_index]}): {e}")
+            if attempt < max_retries - 1:
+                switched = switch_to_next_model()
+                if not switched:
+                    raise Exception("Tüm modellere geçiş denendi ancak LLM başlatılamadı.")
+            else:
+                logging.critical("Tüm modellerin kotaları denendi ve hepsi başarısız oldu.")
+                raise e
+        except Exception as e:
+            logging.error(f"LLM çağrısı sırasında beklenmedik hata: {e}", exc_info=True)
+            raise e
+    
+    raise Exception("Tüm modeller denendi ancak LLM çağrısı başarılı olamadı.")
+
 
 def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, entry_indicators: dict, trend_timeframe: str, trend_indicators: dict) -> str:
-    """
-    Multi-Timeframe Analysis (MTA) için GELİŞTİRİLMİŞ prompt oluşturur.
-    Bu yeni sürüm, AI'nın sinyal güçlerini tartmasını ve trend dönüşlerini yorumlamasını teşvik eder.
-    """
     entry_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in entry_indicators.items()])
     trend_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in trend_indicators.items()])
-    
     return f"""
     Sen, Çoklu Zaman Aralığı (MTA) konusunda uzmanlaşmış, tecrübeli bir trading analistisin.
     Görevin, sana sunulan iki farklı zaman aralığına ait veriyi birleştirerek kapsamlı bir analiz yapmak ve net bir ticaret kararı ('AL', 'SAT' veya 'BEKLE') vermektir.
-
     ## ANALİZ FELSEFEN:
     1.  **Önce Ana Trendi Anla:** '{trend_timeframe}' zaman aralığındaki verilere bakarak ana trendin yönünü ve GÜCÜNÜ (ADX değerine göre) belirle.
         - ADX < 20: Yönsüz piyasa.
@@ -70,17 +128,13 @@ def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, 
         - **Çelişki Durumu (SENİN UZMANLIĞIN BURADA):** Eğer ana trend ile giriş sinyali arasında bir uyumsuzluk varsa, sadece 'BEKLE' deyip geçme. Sinyallerin gücünü tart.
             - **Örnek 1:** Eğer '{trend_timeframe}' trendi ZAYIF (örn: ADX=23) ama '{entry_timeframe}' sinyali ÇOK GÜÇLÜ ise (örn: ADX=50 ve RSI=19), bu bir **TREND DÖNÜŞÜ** potansiyeli olabilir. Bu durumda, ana trendin aksine bir pozisyon önerisinde bulunabilirsin ('AL' veya 'SAT'). Gerekçende bunu mutlaka belirt.
             - **Örnek 2:** Eğer her iki sinyal de zayıf veya belirsizse, o zaman 'BEKLE' kararı en doğrusudur.
-    
     ## SAĞLANAN VERİLER:
     - Sembol: {symbol}
     - Anlık Fiyat: {price}
-
     ### Ana Trend Verileri ({trend_timeframe})
     {trend_indicator_text}
-
     ### Giriş Sinyali Verileri ({entry_timeframe})
     {entry_indicator_text}
-
     ## İSTENEN JSON ÇIKTI FORMATI:
     Kararını ve yukarıdaki felsefeye dayalı detaylı gerekçeni, aşağıda formatı verilen JSON çıktısı olarak sun. Başka hiçbir açıklama yapma.
     ```json
@@ -99,7 +153,6 @@ def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, 
     """
 
 def create_final_analysis_prompt(symbol: str, timeframe: str, price: float, indicators: dict) -> str:
-    """Tek zamanlı standart analiz için prompt oluşturur."""
     indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in indicators.items()])
     return f"""
     Sen, uzman bir trading analistisin.
@@ -125,29 +178,7 @@ def create_final_analysis_prompt(symbol: str, timeframe: str, price: float, indi
     ```
     """
 
-def create_reanalysis_prompt(position: dict) -> str:
-    """Mevcut bir pozisyonu yeniden değerlendirmek için prompt oluşturur."""
-    symbol = position.get("symbol")
-    timeframe = position.get("timeframe")
-    side = position.get("side", "").upper()
-    entry_price = position.get("entry_price")
-    return f"""
-    Sen, tecrübeli bir pozisyon yöneticisisin.
-    ## Mevcut Pozisyon Bilgileri:
-    - Sembol: {symbol}
-    - Yön: {side}
-    - Giriş Fiyatı: {entry_price}
-    - Analiz Zaman Aralığı: {timeframe}
-    ## Görevin:
-    Bu pozisyonun mevcut durumunu teknik göstergeleri ve anlık fiyatı kullanarak yeniden değerlendir. Ardından, pozisyon için 'TUT' (Hold) veya 'KAPAT' (Close) şeklinde net bir tavsiye ver.
-    Başka bir eylemde bulunma, sadece tavsiye ver.
-    ## Nihai Rapor Formatı:
-    Kararını ve gerekçeni içeren bir JSON nesnesi döndür.
-    Örnek: {{"recommendation": "KAPAT", "reason": "Fiyat giriş seviyesinin üzerine çıktı ve RSI aşırı alım sinyali veriyor, risk yönetimi gereği kapatılmalı."}}
-    """
-
 def parse_agent_response(response: str) -> dict | None:
-    """Agent'tan gelen JSON yanıtını temizler ve ayrıştırır."""
     if not response or not isinstance(response, str):
         return None
     try:
@@ -159,4 +190,3 @@ def parse_agent_response(response: str) -> dict | None:
     except (json.JSONDecodeError, IndexError):
         logging.error(f"JSON ayrıştırma hatası. Gelen Yanıt: {response}")
         return None
-
