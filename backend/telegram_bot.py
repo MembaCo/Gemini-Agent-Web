@@ -6,12 +6,11 @@ import logging
 import os
 from dotenv import load_dotenv
 from telegram import Update
-# DÜZELTME: ParseMode, en son sürümlerle uyumlu olması için 'telegram.constants' modülünden import edildi.
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from core import app_config, trader, agent as core_agent
-from tools import _get_unified_symbol, _fetch_price_natively, get_technical_indicators # Düzeltildi: get_technical_indicators doğrudan import edildi
+from tools import _get_unified_symbol, _fetch_price_natively, get_technical_indicators
 import database
 from ccxt.base.errors import BadSymbol
 
@@ -69,8 +68,8 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         use_mta = app_config.settings.get('USE_MTA_ANALYSIS', True)
         entry_timeframe = '15m'
         
-        # Düzeltildi: get_technical_indicators.invoke() yerine get_technical_indicators() çağrıldı
-        entry_indicators_result = get_technical_indicators(symbol_and_timeframe=f"{unified_symbol},{entry_timeframe}")
+        # DÜZELTME: LangChain aracını keyword argümanı olmadan, doğrudan pozisyonel argüman ile çağırıyoruz.
+        entry_indicators_result = get_technical_indicators(f"{unified_symbol},{entry_timeframe}")
         if entry_indicators_result.get("status") != "success":
             raise ValueError(f"Teknik veri alınamadı: {entry_indicators_result.get('message')}")
         entry_indicators_data = entry_indicators_result["data"]
@@ -78,8 +77,8 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         final_prompt = ""
         if use_mta:
             trend_timeframe = app_config.settings.get('MTA_TREND_TIMEFRAME', '4h')
-            # Düzeltildi: get_technical_indicators.invoke() yerine get_technical_indicators() çağrıldı
-            trend_indicators_result = get_technical_indicators(symbol_and_timeframe=f"{unified_symbol},{trend_timeframe}")
+            # DÜZELTME: LangChain aracını keyword argümanı olmadan, doğrudan pozisyonel argüman ile çağırıyoruz.
+            trend_indicators_result = get_technical_indicators(f"{unified_symbol},{trend_timeframe}")
             if trend_indicators_result.get("status") != "success":
                  raise ValueError(f"Trend verisi alınamadı: {trend_indicators_result.get('message')}")
             trend_indicators_data = trend_indicators_result["data"]
@@ -109,7 +108,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except BadSymbol as e:
         await update.message.reply_text(f'Geçersiz sembol veya veri bulunamadı: `{str(e)}`')
     except Exception as e:
-        await update.message.reply_text(f'Analiz sırasında beklenmedik bir hata oluştu: {e}')
+         await update.message.reply_text(f'Analiz sırasında beklenmedik bir hata oluştu: {e}')
 
 async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/pozisyonlar komutunu işler."""

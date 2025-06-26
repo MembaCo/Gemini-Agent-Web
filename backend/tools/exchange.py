@@ -1,10 +1,6 @@
 # ==============================================================================
 # File: backend/tools/exchange.py
 # @author: Memba Co.
-# --- Pitoncu Tarafından Güncellenmiş Tam Sürüm ---
-# Bu sürüm, dairesel bağımlılık (circular dependency) hatasını gidermek için
-# 'core' modülüne olan importları fonksiyonların içine taşır ve
-# mevcut tüm fonksiyonelliği korur.
 # ==============================================================================
 
 import os
@@ -17,15 +13,10 @@ from dotenv import load_dotenv
 from langchain.tools import tool
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-# Dairesel bağımlılığı önlemek için 'core' importları dosyanın en üstünden kaldırıldı.
-# Bunlar yerine, ihtiyaç duyuldukları fonksiyonların içine taşınacaklar.
 from .utils import _get_unified_symbol, _parse_symbol_timeframe_input, str_to_bool
 
 load_dotenv()
 exchange = None
-
-# Önbellekleme mekanizması, cache_manager.py'den alınarak basitleştirildi.
-# Eğer daha karmaşık bir yapıya ihtiyaç duyulursa cache_manager tekrar kullanılabilir.
 indicator_cache = {}
 CACHE_TTL_SECONDS = 180
 
@@ -53,7 +44,6 @@ def initialize_exchange(market_type: str):
 
     exchange = ccxt.binance(config_data)
     
-    # Testnet ayarı
     if use_testnet and market_type.lower() == 'future':
         exchange.set_sandbox_mode(True)
 
@@ -70,7 +60,10 @@ def _fetch_price_natively(symbol: str) -> float | None:
     """Borsadan anlık fiyatı çeker (yeniden deneme mekanizması ile)."""
     if not exchange: return None
     try:
-        ticker = exchange.fetch_ticker(_get_unified_symbol(symbol))
+        request_symbol = symbol
+        if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future':
+            request_symbol = symbol.replace('/', '')
+        ticker = exchange.fetch_ticker(request_symbol)
         return float(ticker["last"]) if ticker and ticker.get("last") is not None else None
     except Exception as e:
         logging.warning(f"{symbol} için fiyat çekilirken yeniden denenecek hata: {e}")
@@ -78,7 +71,6 @@ def _fetch_price_natively(symbol: str) -> float | None:
 
 def get_wallet_balance(quote_currency: str = "USDT") -> dict:
     """Cüzdan bakiyesini alır."""
-    # GEREKLİ IMPORT: Fonksiyon içinde yapılıyor.
     from core import app_config
     if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future':
         return {"status": "error", "message": "Bu fonksiyon sadece vadeli işlem modunda çalışır."}
@@ -117,8 +109,14 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
     
     symbol, timeframe = _parse_symbol_timeframe_input(symbol_and_timeframe)
     
+    # DÜZELTME: Binance Futures için sembol formatını ayarla (örn: BTC/USDT -> BTCUSDT)
+    request_symbol = symbol
+    if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future':
+        request_symbol = symbol.replace('/', '')
+
     try:
-        bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=500)
+        # API isteğini düzeltilmiş sembol ile yap
+        bars = exchange.fetch_ohlcv(request_symbol, timeframe=timeframe, limit=500)
         if not bars:
             return {"status": "error", "message": f"Geçmiş veri bulunamadı: {symbol}."}
         
@@ -160,33 +158,28 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
         logging.error(f"Teknik gösterge alınırken genel hata ({symbol}): {e}", exc_info=True)
         return {"status": "error", "message": f"Beklenmedik bir hata oluştu: {str(e)}"}
 
+# Geri kalan fonksiyonlarda bir değişiklik gerekmemektedir.
+# ... (get_symbols_from_exchange, get_volume_spikes vb. fonksiyonlar)
+# ...
 def get_symbols_from_exchange(exchange_instance, quote_currency: str) -> list:
-    """
-    Belirtilen borsadan sembolleri çeker ve belirli bir quote_currency ile filtreler.
-    """
     if not exchange_instance:
         logging.error("Borsa bağlantısı başlatılmadığı için semboller alınamıyor.")
         return []
     
     try:
-        # ccxt'nin load_markets() fonksiyonu tüm piyasaları yükler
         markets = exchange_instance.load_markets()
-        
         symbols = []
         for market_id, market_info in markets.items():
-            # Sadece alım satılabilir (active) ve doğru quote currency'ye sahip sembolleri al
-            if market_info['active'] and market_info['quote'] == quote_currency.upper():
-                symbols.append(market_info['symbol']) # 'BTC/USDT' gibi tam sembol adını ekle
+            if market_info.get('active', False) and market_info.get('quote') == quote_currency.upper() and market_info.get('type') == exchange_instance.options.get('defaultType'):
+                symbols.append(market_info['symbol'])
         
-        logging.info(f"{quote_currency} cinsinden {len(symbols)} adet sembol borsadan çekildi.")
+        logging.info(f"{quote_currency} cinsinden {len(symbols)} adet {exchange_instance.options.get('defaultType')} sembolü borsadan çekildi.")
         return symbols
     except Exception as e:
         logging.error(f"Borsadan semboller alınırken hata oluştu: {e}", exc_info=True)
         return []
 
 def get_volume_spikes(timeframe: str, period: int, multiplier: float, min_volume_usdt: int) -> list:
-    """Hacim patlaması yaşayan sembolleri tarar."""
-    # GEREKLİ IMPORT: Fonksiyon içinde yapılıyor.
     from core import app_config
     if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future': return []
     logging.info(f"Hacim patlaması taraması başlatıldı: Zaman Aralığı={timeframe}, Periyot={period}, Çarpan={multiplier}")
@@ -226,14 +219,15 @@ def get_volume_spikes(timeframe: str, period: int, multiplier: float, min_volume
         return []
 
 def get_atr_value(symbol_and_timeframe: str) -> dict:
-    """Belirtilen sembol için ATR değerini hesaplar."""
     if not exchange: return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
     try:
         symbol, timeframe = _parse_symbol_timeframe_input(symbol_and_timeframe)
-        bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=200)
+        request_symbol = symbol.replace('/', '') if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future' else symbol
+        bars = exchange.fetch_ohlcv(request_symbol, timeframe=timeframe, limit=200)
         if not bars or len(bars) < 20: return {"status": "error", "message": "Yetersiz veri"}
         df = pd.DataFrame(bars, columns=["timestamp", "open", "high", "low", "close", "volume"])
         atr = df.ta.atr()
+        if atr is None or atr.empty: return {"status": "error", "message": "ATR hesaplanamadı."}
         last_atr = atr.iloc[-1]
         if pd.isna(last_atr): return {"status": "error", "message": "ATR değeri NaN"}
         return {"status": "success", "value": last_atr}
@@ -242,8 +236,6 @@ def get_atr_value(symbol_and_timeframe: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 def get_top_gainers_losers(top_n: int, min_volume_usdt: int) -> list:
-    """En çok kazanan ve kaybedenleri listeler."""
-    # GEREKLİ IMPORT: Fonksiyon içinde yapılıyor.
     from core import app_config
     if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future': return []
     try:
@@ -258,43 +250,43 @@ def get_top_gainers_losers(top_n: int, min_volume_usdt: int) -> list:
         return []
 
 def execute_trade_order(symbol: str, side: str, amount: float, price: float = None, stop_loss: float = None, take_profit: float = None, leverage: float = None) -> dict:
-    """İşlem emri gönderir."""
-    # GEREKLİ IMPORT: Fonksiyon içinde yapılıyor.
     from core import app_config
     if not exchange: 
         return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
     
     unified_symbol = _get_unified_symbol(symbol)
+    request_symbol = unified_symbol.replace('/', '') if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future' else unified_symbol
+
     try:
-        formatted_amount = exchange.amount_to_precision(unified_symbol, amount)
-        formatted_price = exchange.price_to_precision(unified_symbol, price) if price is not None else None
+        formatted_amount = exchange.amount_to_precision(request_symbol, amount)
+        formatted_price = exchange.price_to_precision(request_symbol, price) if price is not None else None
         
         if not app_config.settings.get('LIVE_TRADING'):
             sim_price = price or _fetch_price_natively(unified_symbol)
             return {"status": "success", "message": f"Simülasyon emri başarılı: {side} {formatted_amount} {unified_symbol}", "fill_price": sim_price}
 
-        if leverage: exchange.set_leverage(int(leverage), unified_symbol)
+        if leverage: exchange.set_leverage(int(leverage), request_symbol)
         
         order_type = app_config.settings.get('DEFAULT_ORDER_TYPE', 'LIMIT').lower()
         order = None
         
         if order_type == 'limit' and formatted_price:
-            order = exchange.create_limit_order(unified_symbol, side, float(formatted_amount), float(formatted_price))
+            order = exchange.create_limit_order(request_symbol, side, float(formatted_amount), float(formatted_price))
         else:
-            order = exchange.create_market_order(unified_symbol, side, float(formatted_amount))
+            order = exchange.create_market_order(request_symbol, side, float(formatted_amount))
             
         fill_price = order.get('average') or order.get('price')
         if not fill_price:
             time.sleep(1)
-            trades = exchange.fetch_my_trades(unified_symbol, limit=1)
+            trades = exchange.fetch_my_trades(request_symbol, limit=1)
             fill_price = trades[0]['price'] if trades else _fetch_price_natively(unified_symbol)
             
         if stop_loss and take_profit:
             opposite = 'sell' if side == 'buy' else 'buy'
             time.sleep(0.5)
-            try: exchange.create_order(unified_symbol, 'STOP_MARKET', opposite, float(formatted_amount), None, {'stopPrice': stop_loss, 'reduceOnly': True})
+            try: exchange.create_order(request_symbol, 'STOP_MARKET', opposite, float(formatted_amount), None, {'stopPrice': stop_loss, 'reduceOnly': True})
             except Exception as sl_e: logging.error(f"SL emri gönderilemedi: {sl_e}")
-            try: exchange.create_order(unified_symbol, 'TAKE_PROFIT_MARKET', opposite, float(formatted_amount), None, {'stopPrice': take_profit, 'reduceOnly': True})
+            try: exchange.create_order(request_symbol, 'TAKE_PROFIT_MARKET', opposite, float(formatted_amount), None, {'stopPrice': take_profit, 'reduceOnly': True})
             except Exception as tp_e: logging.error(f"TP emri gönderilemedi: {tp_e}")
             
         return {"status": "success", "message": f"İşlem emri ({side} {formatted_amount} {unified_symbol}) başarıyla gönderildi.", "fill_price": fill_price}
@@ -303,8 +295,6 @@ def execute_trade_order(symbol: str, side: str, amount: float, price: float = No
         return {"status": "error", "message": f"HATA: İşlem sırasında beklenmedik bir hata oluştu: {e}"}
 
 def get_open_positions_from_exchange() -> list:
-    """Borsadaki mevcut açık pozisyonları çeker."""
-    # GEREKLİ IMPORT: Fonksiyon içinde yapılıyor.
     from core import app_config
     if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future': return []
     try:
@@ -315,26 +305,26 @@ def get_open_positions_from_exchange() -> list:
         return []
 
 def update_stop_loss_order(symbol: str, side: str, amount: float, new_stop_price: float) -> str:
-    """Mevcut bir stop-loss emrini günceller."""
-    # GEREKLİ IMPORT: Fonksiyon içinde yapılıyor.
     from core import app_config
     if not exchange: return "HATA: Borsa bağlantısı başlatılmamış."
     if not app_config.settings.get('LIVE_TRADING'):
         return f"Simülasyon: {symbol} için SL emri {new_stop_price} olarak güncellendi."
     
     unified_symbol = _get_unified_symbol(symbol)
+    request_symbol = unified_symbol.replace('/', '') if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future' else unified_symbol
+
     try:
-        open_orders = exchange.fetch_open_orders(unified_symbol)
+        open_orders = exchange.fetch_open_orders(request_symbol)
         stop_orders_to_cancel = [o for o in open_orders if 'stop' in o.get('type','').lower() and o.get('reduceOnly')]
         for order in stop_orders_to_cancel:
-            exchange.cancel_order(order['id'], unified_symbol)
+            exchange.cancel_order(order['id'], request_symbol)
         
         time.sleep(0.5)
         opposite_side = 'sell' if side == 'buy' else 'buy'
         
         if new_stop_price > 0:
             params_sl = {'stopPrice': new_stop_price, 'reduceOnly': True}
-            exchange.create_order(unified_symbol, 'STOP_MARKET', opposite_side, amount, None, params_sl)
+            exchange.create_order(request_symbol, 'STOP_MARKET', opposite_side, amount, None, params_sl)
             return f"Başarılı: {unified_symbol} için yeni SL emri {new_stop_price} olarak oluşturuldu."
         else:
             return "Hata: Geçersiz yeni stop-loss fiyatı."
@@ -343,16 +333,16 @@ def update_stop_loss_order(symbol: str, side: str, amount: float, new_stop_price
         return f"HATA: SL güncellenemedi. Detay: {e}"
 
 def cancel_all_open_orders(symbol: str) -> str:
-    """Belirtilen sembol için tüm açık emirleri iptal eder."""
-    # GEREKLİ IMPORT: Fonksiyon içinde yapılıyor.
     from core import app_config
     if not exchange: return "HATA: Borsa bağlantısı başlatılmamış."
     if not app_config.settings.get('LIVE_TRADING'):
         return f"Simülasyon: {symbol} için tüm açık emirler iptal edildi."
     
     unified_symbol = _get_unified_symbol(symbol)
+    request_symbol = unified_symbol.replace('/', '') if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future' else unified_symbol
+
     try:
-        exchange.cancel_all_orders(unified_symbol)
+        exchange.cancel_all_orders(request_symbol)
         logging.info(f"İPTAL: {unified_symbol} için tüm açık emirler başarıyla iptal edildi.")
         return f"Başarılı: {unified_symbol} için tüm açık emirler iptal edildi."
     except Exception as e:
