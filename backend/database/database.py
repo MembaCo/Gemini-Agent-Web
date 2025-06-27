@@ -6,7 +6,7 @@ import logging
 import json
 import os
 
-from config_defaults import default_settings 
+from config_defaults import default_settings
 
 DATA_DIR = "data"
 DB_FILE = os.path.join(DATA_DIR, "trades.db")
@@ -18,45 +18,37 @@ def get_db_connection():
     return conn
 
 def _initialize_settings(conn):
-    """Ayarlar tablosunu varsayılan değerlerle doldurur veya eksik ayarları tamamlar."""
     logging.info("Varsayılan ayarlar veritabanı ile senkronize ediliyor...")
     cursor = conn.cursor()
-    
     for key, value in default_settings.items():
         cursor.execute("SELECT key FROM settings WHERE key = ?", (key,))
         if cursor.fetchone() is None:
             value_type = type(value).__name__
             value_to_store = json.dumps(value) if isinstance(value, list) else str(value)
-            cursor.execute(
-                "INSERT INTO settings (key, value, type) VALUES (?, ?, ?)",
-                (key, value_to_store, value_type)
-            )
+            cursor.execute("INSERT INTO settings (key, value, type) VALUES (?, ?, ?)", (key, value_to_store, value_type))
             logging.info(f"Varsayılan ayar eklendi: {key} = {value_to_store}")
     conn.commit()
 
-
 def init_db():
-    """Veritabanı tablolarını (eğer yoksa) oluşturur ve şema güncellemelerini yapar."""
     os.makedirs(DATA_DIR, exist_ok=True)
-    
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        
-        # --- TABLO OLUŞTURMA ---
         cursor.execute('CREATE TABLE IF NOT EXISTS managed_positions (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL UNIQUE, side TEXT NOT NULL, amount REAL NOT NULL, initial_amount REAL, entry_price REAL NOT NULL, timeframe TEXT NOT NULL, leverage REAL NOT NULL, stop_loss REAL NOT NULL, initial_stop_loss REAL, take_profit REAL NOT NULL, partial_tp_executed BOOLEAN DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, pnl REAL DEFAULT 0, pnl_percentage REAL DEFAULT 0)')
         cursor.execute('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, side TEXT NOT NULL, amount REAL NOT NULL, entry_price REAL NOT NULL, close_price REAL NOT NULL, pnl REAL NOT NULL, status TEXT NOT NULL, timeframe TEXT, opened_at TIMESTAMP, closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, type TEXT NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS strategy_presets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, settings TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS scanner_candidates (symbol TEXT PRIMARY KEY, source TEXT, timeframe TEXT, indicators TEXT, last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+        
         
         # YENİ: Tarayıcı adayları için yeni tablo
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS scanner_candidates (
-                symbol TEXT PRIMARY KEY,
-                source TEXT,
-                timeframe TEXT,
-                indicators TEXT, -- JSON dizesi olarak saklanacak
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                level TEXT NOT NULL,
+                category TEXT NOT NULL,
+                message TEXT NOT NULL
             )
         ''')
         
@@ -85,8 +77,28 @@ def init_db():
     finally:
         conn.close()
 
-# --- AYAR YÖNETİMİ FONKSİYONLARI (Değişiklik yok) ---
-# ... (get_all_settings ve update_settings fonksiyonları burada) ...
+
+def log_event(level: str, category: str, message: str):
+    """Sistem olaylarını veritabanına kaydeder."""
+    conn = get_db_connection()
+    try:
+        conn.execute("INSERT INTO events (level, category, message) VALUES (?, ?, ?)", (level.upper(), category, message))
+        conn.commit()
+    except Exception as e:
+        logging.error(f"Olay loglanırken veritabanı hatası: {e}")
+    finally:
+        conn.close()
+
+def get_events(limit: int = 50) -> list[dict]:
+    """En son olayları veritabanından çeker."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute('SELECT * FROM events ORDER BY timestamp DESC LIMIT ?', (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 def get_all_settings() -> dict:
     conn = get_db_connection()
     try:

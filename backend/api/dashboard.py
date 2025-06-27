@@ -1,89 +1,111 @@
-# api/dashboard.py
-# @author: Memba Co.
 
-from fastapi import APIRouter, HTTPException
+# ==============================================================================
+# File: backend/api/dashboard.py
+# @author: Memba Co.
+# Açıklama: Yeni metrikleri ve grafik verilerini hesaplamak için tamamen yenilendi.
+#           /events adında yeni bir endpoint eklendi.
+# ==============================================================================
 import logging
+from fastapi import APIRouter, HTTPException
 from datetime import datetime, timedelta
+import pandas as pd
+import numpy as np
 
 import database
-from core import agent as core_agent # Agent modülünü import ediyoruz
+from core import agent as core_agent
 
-router = APIRouter(
-    prefix="/dashboard",
-    tags=["Dashboard"],
-)
+router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
-@router.get("/stats", summary="Genel performans istatistiklerini ve grafik verilerini al")
+@router.get("/stats", summary="Tüm dashboard verilerini al")
 async def get_dashboard_data():
-    """
-    Frontend dashboard'u için gerekli tüm verileri hesaplar ve döndürür.
-    Bu, genel PNL, kazanma oranı gibi temel istatistikleri, aktif AI modelini
-    ve PNL zaman çizelgesi grafiği için verileri içerir.
-    """
     logging.info("API: Dashboard verileri için istek alındı.")
-    
     try:
         trade_history = database.get_trade_history()
-        if not isinstance(trade_history, list):
-             trade_history = []
-
-        # --- Genel İstatistikleri Hesapla ---
-        total_pnl = sum(item['pnl'] for item in trade_history)
-        total_trades = len(trade_history)
-        winning_trades = sum(1 for item in trade_history if item['pnl'] > 0)
-        losing_trades = total_trades - winning_trades
-        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+        if not isinstance(trade_history, list): trade_history = []
         
-        best_trade = max(trade_history, key=lambda x: x['pnl'], default={'pnl': 0})
-        worst_trade = min(trade_history, key=lambda x: x['pnl'], default={'pnl': 0})
+        # --- Gelişmiş İstatistikler ---
+        gross_profit = sum(t['pnl'] for t in trade_history if t['pnl'] > 0)
+        gross_loss = abs(sum(t['pnl'] for t in trade_history if t['pnl'] < 0))
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
+        
+        total_pnl = gross_profit - gross_loss
+        total_trades = len(trade_history)
+        winning_trades = sum(1 for t in trade_history if t['pnl'] > 0)
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+        avg_pnl = total_pnl / total_trades if total_trades > 0 else 0
+        
+        # Ortalama pozisyon süresi
+        total_holding_seconds = 0
+        if total_trades > 0:
+            for trade in trade_history:
+                try:
+                    opened_at = datetime.fromisoformat(trade['opened_at'])
+                    closed_at = datetime.fromisoformat(trade['closed_at'])
+                    total_holding_seconds += (closed_at - opened_at).total_seconds()
+                except (TypeError, ValueError):
+                    continue # Geçersiz tarih formatını atla
+            avg_holding_seconds = total_holding_seconds / total_trades
+        else:
+            avg_holding_seconds = 0
+        
+        # PNL Grafiği ve Max Drawdown
+        pnl_df = pd.DataFrame(trade_history)
+        max_drawdown = 0
+        cumulative_pnl_chart = []
+        performance_by_symbol = []
+        performance_by_week = []
 
-        # YENİ: Aktif olarak çalışan AI modelinin adını al
+        if not pnl_df.empty and 'closed_at' in pnl_df.columns and 'pnl' in pnl_df.columns:
+            pnl_df['closed_at_dt'] = pd.to_datetime(pnl_df['closed_at'])
+            pnl_df = pnl_df.sort_values(by='closed_at_dt')
+            pnl_df['cumulative_pnl'] = pnl_df['pnl'].cumsum()
+            
+            pnl_df['peak'] = pnl_df['cumulative_pnl'].cummax()
+            pnl_df['drawdown'] = pnl_df['peak'] - pnl_df['cumulative_pnl']
+            max_drawdown = pnl_df['drawdown'].max() if not pnl_df['drawdown'].empty else 0
+            
+            cumulative_pnl_chart = [{'x': row['closed_at_dt'].strftime('%Y-%m-%d'), 'y': row['cumulative_pnl']} for index, row in pnl_df.iterrows()]
+
+            # Sembollere Göre İşlem Dağılımı (Pie Chart)
+            trade_dist = pnl_df.groupby('symbol').size().reset_index(name='count')
+            performance_by_symbol = trade_dist.to_dict('records')
+            
+            # Haftalık Performans (Bar Chart)
+            pnl_df['week'] = pnl_df['closed_at_dt'].dt.to_period('W').astype(str)
+            weekly_perf = pnl_df.groupby('week')['pnl'].sum().reset_index()
+            performance_by_week = weekly_perf.to_dict('records')
+
         active_model = "N/A"
         if core_agent.model_fallback_list:
             try:
                 active_model = core_agent.model_fallback_list[core_agent.current_model_index]
             except IndexError:
                 logging.error("Dashboard: Aktif model indeksi, model listesinin dışında.")
-        
+
         stats = {
-            "total_pnl": total_pnl,
-            "total_trades": total_trades,
-            "win_rate": win_rate,
-            "winning_trades": winning_trades,
-            "losing_trades": losing_trades,
-            "best_trade_pnl": best_trade['pnl'],
-            "worst_trade_pnl": worst_trade['pnl'],
-            "active_model": active_model, # Aktif model istatistiklere eklendi
+            "total_pnl": total_pnl, "win_rate": win_rate, "winning_trades": winning_trades,
+            "losing_trades": total_trades - winning_trades, "total_trades": total_trades,
+            "active_model": active_model, "profit_factor": profit_factor,
+            "max_drawdown": max_drawdown, "avg_pnl": avg_pnl,
+            "avg_holding_seconds": avg_holding_seconds
         }
 
-        # --- PNL Grafiği Verilerini Oluştur ---
-        cumulative_pnl = 0
-        chart_points = []
-        if trade_history:
-             try:
-                 first_trade_date_str = trade_history[0]['closed_at'].split('.')[0]
-                 first_trade_date = datetime.strptime(first_trade_date_str, '%Y-%m-%d %H:%M:%S')
-                 start_date = first_trade_date - timedelta(days=1)
-                 chart_points.append({'x': start_date.strftime('%Y-%m-%d'), 'y': 0})
-             except (ValueError, IndexError):
-                chart_points.append({'x': datetime.now().strftime('%Y-%m-%d'), 'y': 0})
-        for trade in reversed(trade_history): # Grafiğin doğru çizilmesi için eskiden yeniye sırala
-            cumulative_pnl += trade['pnl']
-            chart_points.append({
-                'x': trade['closed_at'].split(' ')[0],
-                'y': round(cumulative_pnl, 2)
-            })
-        
-        chart_data = {"points": chart_points}
-
-        response_data = {
+        return {
             "stats": stats,
-            "chart_data": chart_data,
-            "trade_history": trade_history
+            "chart_data": {"points": cumulative_pnl_chart},
+            "trade_history": trade_history,
+            "performance_by_symbol": performance_by_symbol,
+            "performance_by_week": performance_by_week,
         }
-
-        return response_data
-
     except Exception as e:
         logging.error(f"Dashboard verileri alınırken hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Dashboard verileri alınırken bir sunucu hatası oluştu.")
+
+@router.get("/events", summary="Son sistem olaylarını (logları) al")
+async def get_system_events(limit: int = 50):
+    """Veritabanından en son sistem olaylarını çeker."""
+    try:
+        return database.get_events(limit)
+    except Exception as e:
+        logging.error(f"Sistem olayları alınırken hata: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Loglar alınırken bir hata oluştu.")

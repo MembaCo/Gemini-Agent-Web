@@ -37,24 +37,22 @@ export const AuthProvider = ({ children }) => {
 
         if (response.status === 401) {
             logout();
-            showToast('Oturum süreniz doldu. Lütfen tekrar giriş yapın.', 'error');
-            throw new Error('Unauthorized');
+            throw new Error('Oturum süreniz doldu. Lütfen tekrar giriş yapın.');
         }
         
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.indexOf("application/json") !== -1) {
             const data = await response.json();
             if (!response.ok) {
-                throw new Error(data.detail || `HTTP error! status: ${response.status}`);
+                throw new Error(data.detail || `HTTP Hatası: ${response.status}`);
             }
             return data;
         } else {
             if (!response.ok) {
-                 throw new Error(`HTTP error! status: ${response.status}`);
+                 throw new Error(`HTTP Hatası: ${response.status}`);
             }
-            return; // No-content yanıtları için (örn. DELETE)
+            return; 
         }
-
     }, [logout, showToast]);
 
 
@@ -97,46 +95,33 @@ export const AuthProvider = ({ children }) => {
     const closePosition = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/close`, { method: 'POST' }), [apiFetch]);
     const refreshPnl = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/refresh-pnl`, { method: 'POST' }), [apiFetch]);
     const reanalyzePosition = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/reanalyze`, { method: 'POST' }), [apiFetch]);
+    
     const runBacktest = useCallback((params) => apiFetch('/backtest/run', { method: 'POST', body: JSON.stringify(params) }), [apiFetch]);
     const fetchChartData = useCallback((params) => {const query = new URLSearchParams(params).toString();return apiFetch(`/charts/ohlcv?${query}`);},[apiFetch]);
+    
     const fetchPresets = useCallback(() => apiFetch('/presets/'), [apiFetch]);
     const savePreset = useCallback((preset) => apiFetch('/presets/', { method: 'POST', body: JSON.stringify(preset) }), [apiFetch]);
     const deletePreset = useCallback((presetId) => apiFetch(`/presets/${presetId}`, { method: 'DELETE' }), [apiFetch]);
     
-    // YENİ VE GÜNCELLENMİŞ SCANNER FONKSİYONLARI
     const runInteractiveScan = useCallback(() => apiFetch('/scanner/run-interactive-scan', { method: 'POST' }), [apiFetch]);
+    const runProactiveScan = useCallback(() => apiFetch('/scanner/run-proactive-scan', { method: 'POST' }), [apiFetch]);
     const fetchScannerCandidates = useCallback(() => apiFetch('/scanner/candidates'), [apiFetch]);
     const refreshScannerCandidate = useCallback((symbol) => apiFetch(`/scanner/candidates/${encodeURIComponent(symbol)}/refresh`, { method: 'POST' }), [apiFetch]);
-    const runProactiveScan = useCallback(() => apiFetch('/scanner/run-proactive-scan', { method: 'POST' }), [apiFetch]);
+
+    // YENİ: Dashboard geliştirmeleri için eklenen API fonksiyonları
+    const fetchEvents = useCallback(() => apiFetch('/dashboard/events'), [apiFetch]);
+    const closeAllPositions = useCallback(() => apiFetch('/positions/close-all', { method: 'POST' }), [apiFetch]);
+    const updatePositionSlTp = useCallback((symbol, data) => apiFetch(`/positions/${encodeURIComponent(symbol)}/sl-tp`, { method: 'PUT', body: JSON.stringify(data) }), [apiFetch]);
 
 
     const value = {
-        isAuthenticated,
-        token,
-        login,
-        logout,
-        apiFetch,
-        toast,
-        showToast,
-        setToast,
-        fetchData,
-        fetchPositions,
-        fetchSettings,
-        saveSettings,
-        runAnalysis,
-        openPosition,
-        closePosition,
-        refreshPnl,
-        reanalyzePosition,
-        runBacktest,
-        fetchChartData,
-        fetchPresets,
-        savePreset,
-        deletePreset,
-        runInteractiveScan,
-        fetchScannerCandidates,
-        refreshScannerCandidate,
-        runProactiveScan
+        isAuthenticated, token, login, logout,
+        apiFetch, toast, showToast, setToast,
+        fetchData, fetchPositions, fetchSettings, saveSettings,
+        runAnalysis, openPosition, closePosition, refreshPnl, reanalyzePosition,
+        runBacktest, fetchChartData, fetchPresets, savePreset, deletePreset,
+        runInteractiveScan, runProactiveScan, fetchScannerCandidates, refreshScannerCandidate,
+        fetchEvents, closeAllPositions, updatePositionSlTp // Yeni fonksiyonlar
     };
 
     return (
