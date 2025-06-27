@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 import database
-from core import app_config, scanner, agent
+from core import app_config, scanner, agent, position_manager
 from config import APP_VERSION as CONFIG_APP_VERSION
 
 router = APIRouter(
@@ -17,7 +17,7 @@ router = APIRouter(
 
 class SettingsUpdate(BaseModel):
     GEMINI_MODEL: Optional[str] = None
-    GEMINI_MODEL_FALLBACK_ORDER: Optional[List[str]] = None # YENİ
+    GEMINI_MODEL_FALLBACK_ORDER: Optional[List[str]] = None
     LIVE_TRADING: Optional[bool] = None
     DEFAULT_MARKET_TYPE: Optional[str] = None
     DEFAULT_ORDER_TYPE: Optional[str] = None
@@ -35,6 +35,7 @@ class SettingsUpdate(BaseModel):
     PARTIAL_TP_TARGET_RR: Optional[float] = None
     PARTIAL_TP_CLOSE_PERCENT: Optional[float] = None
     POSITION_CHECK_INTERVAL_SECONDS: Optional[int] = None
+    ORPHAN_ORDER_CHECK_INTERVAL_SECONDS: Optional[int] = None # YENİ
     PROACTIVE_SCAN_ENABLED: Optional[bool] = None
     PROACTIVE_SCAN_INTERVAL_SECONDS: Optional[int] = None
     PROACTIVE_SCAN_AUTO_CONFIRM: Optional[bool] = None
@@ -56,7 +57,6 @@ class SettingsUpdate(BaseModel):
 def reschedule_jobs(scheduler, new_settings: dict):
     """Çalışan scheduler görevlerini yeni ayarlara göre günceller."""
     try:
-        # GÜNCELLEME: Model ayarları değiştiğinde, agent'ı yeniden başlat
         if 'GEMINI_MODEL' in new_settings or 'GEMINI_MODEL_FALLBACK_ORDER' in new_settings:
             agent.initialize_agent()
             logging.info("Gemini modeli veya yedek listesi değişti. AI ajanı yeni ayarlarla yeniden başlatıldı.")
@@ -68,6 +68,15 @@ def reschedule_jobs(scheduler, new_settings: dict):
                 seconds=new_settings['POSITION_CHECK_INTERVAL_SECONDS']
             )
             logging.info(f"Pozisyon kontrol görevi yeni interval ile yeniden zamanlandı: {new_settings['POSITION_CHECK_INTERVAL_SECONDS']} saniye.")
+
+        # YENİ: Yetim emir kontrol görevinin zamanlamasını güncelle
+        if 'ORPHAN_ORDER_CHECK_INTERVAL_SECONDS' in new_settings:
+            scheduler.reschedule_job(
+                "orphan_order_job",
+                trigger="interval",
+                seconds=new_settings['ORPHAN_ORDER_CHECK_INTERVAL_SECONDS']
+            )
+            logging.info(f"Yetim emir kontrol görevi yeni interval ile yeniden zamanlandı: {new_settings['ORPHAN_ORDER_CHECK_INTERVAL_SECONDS']} saniye.")
 
         if 'PROACTIVE_SCAN_ENABLED' in new_settings or 'PROACTIVE_SCAN_INTERVAL_SECONDS' in new_settings:
             scanner_job = scheduler.get_job("scanner_job")
@@ -91,7 +100,6 @@ def reschedule_jobs(scheduler, new_settings: dict):
 
 @router.get("/", summary="Tüm uygulama ayarlarını al")
 async def get_settings():
-    """Tüm yapılandırma ayarlarını veritabanından okur ve döndürür."""
     try:
         settings = database.get_all_settings()
         settings['APP_VERSION'] = CONFIG_APP_VERSION
@@ -103,23 +111,15 @@ async def get_settings():
 
 @router.put("/", summary="Uygulama ayarlarını güncelle")
 async def update_settings_endpoint(new_settings: SettingsUpdate, request: Request):
-    """
-    Frontend'den gelen yeni ayarları alır, veritabanına kaydeder ve
-    çalışan uygulamanın ayarlarını ve arka plan görevlerini anında günceller.
-    """
     logging.info("API: Uygulama ayarlarını güncelleme isteği alındı.")
     try:
         update_data = new_settings.dict(exclude_unset=True)
-
         if not update_data:
             return {"message": "Güncellenecek herhangi bir ayar gönderilmedi."}
-
         database.update_settings(update_data)
         app_config.load_config()
-        
         scheduler = request.app.state.scheduler
         reschedule_jobs(scheduler, update_data)
-        
         logging.info("Ayarlar başarıyla güncellendi ve ilgili arka plan görevleri yeniden zamanlandı.")
         return {"message": "Ayarlar başarıyla kaydedildi. Değişiklikler anında geçerli olacak."}
     except Exception as e:

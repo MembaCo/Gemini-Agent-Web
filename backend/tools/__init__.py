@@ -18,6 +18,7 @@ from .exchange import (
     update_stop_loss_order,
     get_open_positions_from_exchange,
     cancel_all_open_orders,
+    fetch_open_orders, # YENİ: Eksik olan import ifadesi eklendi.
 )
 
 from .utils import (

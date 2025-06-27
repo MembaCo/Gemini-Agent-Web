@@ -28,14 +28,13 @@ def _initialize_model_list_and_llm():
     primary_model = app_config.settings.get('GEMINI_MODEL', 'gemini-1.5-flash')
     fallback_order = app_config.settings.get('GEMINI_MODEL_FALLBACK_ORDER', [])
     
-    # Birincil modeli listenin başına ekle ve tekrarları kaldırarak benzersiz bir liste oluştur
     ordered_models = [primary_model]
     for model in fallback_order:
         if model not in ordered_models:
             ordered_models.append(model)
     
     model_fallback_list = ordered_models
-    current_model_index = 0 # Her zaman ilk modelle başla
+    current_model_index = 0
     
     if not model_fallback_list:
         logging.critical("Kullanılacak hiçbir Gemini modeli belirtilmemiş. Lütfen ayarları kontrol edin.")
@@ -60,7 +59,7 @@ def switch_to_next_model():
     current_model_index += 1
     if current_model_index >= len(model_fallback_list):
         logging.error("Tüm Gemini modellerinin kotaları tükendi. Tarama geçici olarak durduruldu. Listenin başına dönülüyor.")
-        current_model_index = 0 # Başa dön
+        current_model_index = 0
 
     next_model_name = model_fallback_list[current_model_index]
     logging.warning(f"Kota aşıldı! Bir sonraki modele geçiliyor: {next_model_name}")
@@ -109,6 +108,39 @@ def llm_invoke_with_fallback(prompt: str):
     raise Exception("Tüm modeller denendi ancak LLM çağrısı başarılı olamadı.")
 
 
+# YENİ: Yeniden eklenen fonksiyon
+def create_reanalysis_prompt(position: dict) -> str:
+    """Mevcut bir pozisyonu yeniden değerlendirmek için prompt oluşturur."""
+    # Bu fonksiyon, LangChain Agent'ından bağımsız olduğu için LangChain araçlarını çağırmaz.
+    # Bu nedenle, `get_technical_indicators` gibi araçları doğrudan çağırmaz.
+    # Bunun yerine, LangChain'in `llm.invoke` metodu ile kullanılacak bir metin istemi oluşturur.
+    symbol = position.get("symbol")
+    timeframe = position.get("timeframe")
+    side = position.get("side", "").upper()
+    entry_price = position.get("entry_price")
+    
+    # Not: Bu prompt, AI'nın daha iyi bir karar vermesi için gerekli teknik verileri
+    # içermelidir. Ancak, bu fonksiyonun kendisi bu verileri çekmez. Verilerin
+    # bu fonksiyonu çağıran yer (örn. api/positions.py) tarafından sağlanması ve
+    # prompt'a eklenmesi daha modüler bir yaklaşım olurdu.
+    # Şimdilik, eski `agent` yapısındaki gibi sadece temel pozisyon bilgilerini kullanıyoruz.
+    return f"""
+    Sen, tecrübeli bir pozisyon yöneticisisin.
+    ## Mevcut Pozisyon Bilgileri:
+    - Sembol: {symbol}
+    - Yön: {side}
+    - Giriş Fiyatı: {entry_price}
+    - Analiz Zaman Aralığı: {timeframe}
+
+    ## Görevin:
+    Bu pozisyonun GÜNCEL durumu hakkında net bir tavsiye ver. Teknik göstergeleri ve anlık fiyatı kullanarak pozisyonun devam edip etmemesi gerektiğini değerlendir. Kararın 'TUT' (Hold) veya 'KAPAT' (Close) şeklinde olmalı.
+
+    ## Nihai Rapor Formatı:
+    Kararını ve gerekçeni içeren bir JSON nesnesi döndür.
+    Örnek: {{"recommendation": "KAPAT", "reason": "Fiyat giriş seviyesinin üzerine çıktı ve RSI aşırı alım sinyali veriyor, risk yönetimi gereği kapatılmalı."}}
+    """
+
+
 def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, entry_indicators: dict, trend_timeframe: str, trend_indicators: dict) -> str:
     entry_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in entry_indicators.items()])
     trend_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in trend_indicators.items()])
@@ -117,17 +149,11 @@ def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, 
     Görevin, sana sunulan iki farklı zaman aralığına ait veriyi birleştirerek kapsamlı bir analiz yapmak ve net bir ticaret kararı ('AL', 'SAT' veya 'BEKLE') vermektir.
     ## ANALİZ FELSEFEN:
     1.  **Önce Ana Trendi Anla:** '{trend_timeframe}' zaman aralığındaki verilere bakarak ana trendin yönünü ve GÜCÜNÜ (ADX değerine göre) belirle.
-        - ADX < 20: Yönsüz piyasa.
-        - ADX 20-25: Zayıf trend.
-        - ADX > 25: Güçlü trend.
     2.  **Giriş Sinyalini Değerlendir:** '{entry_timeframe}' zaman aralığındaki sinyali ve GÜCÜNÜ (ADX ve RSI seviyelerine göre) analiz et.
-        - RSI < 30 veya > 70: Güçlü aşırı alım/satım sinyali.
-        - ADX > 40: Çok güçlü bir momentum göstergesi.
     3.  **Sinyalleri Birlikte Yorumla (En Önemli Adım):**
-        - **Teyit Durumu:** Eğer ana trend ile giriş sinyali aynı yöndeyse (örn: 4s yükseliş, 15m AL sinyali), bu güçlü bir teyittir. Kararın net bir şekilde 'AL' veya 'SAT' olabilir.
-        - **Çelişki Durumu (SENİN UZMANLIĞIN BURADA):** Eğer ana trend ile giriş sinyali arasında bir uyumsuzluk varsa, sadece 'BEKLE' deyip geçme. Sinyallerin gücünü tart.
-            - **Örnek 1:** Eğer '{trend_timeframe}' trendi ZAYIF (örn: ADX=23) ama '{entry_timeframe}' sinyali ÇOK GÜÇLÜ ise (örn: ADX=50 ve RSI=19), bu bir **TREND DÖNÜŞÜ** potansiyeli olabilir. Bu durumda, ana trendin aksine bir pozisyon önerisinde bulunabilirsin ('AL' veya 'SAT'). Gerekçende bunu mutlaka belirt.
-            - **Örnek 2:** Eğer her iki sinyal de zayıf veya belirsizse, o zaman 'BEKLE' kararı en doğrusudur.
+        - **Teyit Durumu:** Eğer ana trend ile giriş sinyali aynı yöndeyse, bu güçlü bir teyittir.
+        - **Çelişki Durumu:** Eğer ana trend ile giriş sinyali arasında bir uyumsuzluk varsa, sinyallerin gücünü tart.
+    
     ## SAĞLANAN VERİLER:
     - Sembol: {symbol}
     - Anlık Fiyat: {price}
@@ -136,18 +162,15 @@ def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, 
     ### Giriş Sinyali Verileri ({entry_timeframe})
     {entry_indicator_text}
     ## İSTENEN JSON ÇIKTI FORMATI:
-    Kararını ve yukarıdaki felsefeye dayalı detaylı gerekçeni, aşağıda formatı verilen JSON çıktısı olarak sun. Başka hiçbir açıklama yapma.
     ```json
     {{
       "symbol": "{symbol}",
       "timeframe": "{entry_timeframe}",
       "recommendation": "KARARIN (AL, SAT, veya BEKLE)",
-      "reason": "MTA analizine dayalı detaylı ve nitelikli gerekçen. Sinyal güçlerinden ve olası trend dönüşünden bahset.",
+      "reason": "MTA analizine dayalı detaylı ve nitelikli gerekçen.",
       "analysis_type": "MTA",
       "trend_timeframe": "{trend_timeframe}",
-      "data": {{
-        "price": {price}
-      }}
+      "data": {{"price": {price}}}
     }}
     ```
     """
@@ -156,12 +179,12 @@ def create_final_analysis_prompt(symbol: str, timeframe: str, price: float, indi
     indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in indicators.items()])
     return f"""
     Sen, uzman bir trading analistisin.
-    Aşağıda sana '{symbol}' adlı kripto para için '{timeframe}' zaman aralığında toplanmış veriler sunulmuştur.
-    GÖREVİN: Bu verileri analiz ederek 'AL', 'SAT' veya 'BEKLE' şeklinde net bir tavsiye kararı ver.
-    Kararını ve gerekçeni, aşağıda formatı verilen JSON çıktısı olarak sun. Başka hiçbir açıklama yapma.
+    GÖREVİN: Verileri analiz ederek 'AL', 'SAT' veya 'BEKLE' kararı ver.
     SAĞLANAN VERİLER:
+    - Sembol: {symbol}
+    - Zaman Aralığı: {timeframe}
     - Anlık Fiyat: {price}
-    Teknik Göstergeler:
+    - Teknik Göstergeler:
     {indicator_text}
     İSTENEN JSON ÇIKTI FORMATI:
     ```json
@@ -171,9 +194,7 @@ def create_final_analysis_prompt(symbol: str, timeframe: str, price: float, indi
       "recommendation": "KARARIN (AL, SAT, veya BEKLE)",
       "reason": "Kararının kısa ve net gerekçesi.",
       "analysis_type": "Single",
-      "data": {{
-        "price": {price}
-      }}
+      "data": {{"price": {price}}}
     }}
     ```
     """

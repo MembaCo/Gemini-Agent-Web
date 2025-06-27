@@ -5,13 +5,12 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 import logging
 from urllib.parse import unquote
+from google.api_core.exceptions import ResourceExhausted
 
-# Gerekli modülleri import ediyoruz
 import database
-from tools import get_open_positions_from_exchange, _get_unified_symbol
+from tools import get_open_positions_from_exchange, _get_unified_symbol, get_technical_indicators
 from core.trader import open_new_trade, close_existing_trade, TradeException
 from core.position_manager import refresh_single_position_pnl
-# YENİ: Yeniden analiz için AI agent modülünü import ediyoruz.
 from core import agent as core_agent
 
 router = APIRouter(
@@ -30,15 +29,10 @@ class PositionOpenRequest(BaseModel):
 async def get_all_positions():
     """
     Veritabanındaki tüm aktif yönetilen pozisyonları döndürür.
-    PNL ve diğer anlık veriler, arka planda çalışan position_manager tarafından
-    periyodik olarak güncellenir.
     """
     try:
         managed_positions = database.get_all_positions()
-        return {
-            "managed_positions": managed_positions,
-            "unmanaged_positions": [] # Gelecekte borsa ile senkronizasyon eklenebilir
-        }
+        return { "managed_positions": managed_positions, "unmanaged_positions": [] }
     except Exception as e:
         logging.error(f"Pozisyonlar alınırken hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Pozisyonlar alınırken bir sunucu hatası oluştu.")
@@ -48,7 +42,6 @@ async def get_all_positions():
 async def open_position(request: PositionOpenRequest):
     """
     Bir analiz sonucuna dayanarak yeni bir ticaret pozisyonu açar.
-    Tüm ticaret mantığı `core.trader` modülüne devredilir.
     """
     logging.info(f"API: Yeni pozisyon açma isteği alındı: {request.symbol}")
     try:
@@ -70,8 +63,6 @@ async def open_position(request: PositionOpenRequest):
 async def close_position(symbol: str):
     """
     Belirtilen semboldeki açık pozisyonu manuel olarak kapatır.
-    {symbol:path} kullanımı, sembol içindeki '/' karakterlerinin
-    doğru bir şekilde tek bir parametre olarak okunmasını sağlar.
     """
     decoded_symbol = unquote(symbol)
     unified_symbol = _get_unified_symbol(decoded_symbol)
@@ -91,7 +82,6 @@ async def close_position(symbol: str):
 async def refresh_pnl(symbol: str, background_tasks: BackgroundTasks):
     """
     Belirtilen pozisyon için PNL'i anlık olarak yeniden hesaplar.
-    İşlemi bir arka plan görevi olarak çalıştırarak arayüzün beklemesini önler.
     """
     decoded_symbol = unquote(symbol)
     unified_symbol = _get_unified_symbol(decoded_symbol)
@@ -101,7 +91,6 @@ async def refresh_pnl(symbol: str, background_tasks: BackgroundTasks):
     
     return {"message": f"{unified_symbol} için PNL yenileme görevi başlatıldı."}
 
-# YENİ API ENDPOINT'İ
 @router.post("/{symbol:path}/reanalyze", summary="Mevcut bir pozisyonu yeniden analiz et")
 async def reanalyze_position(symbol: str):
     """
@@ -116,20 +105,28 @@ async def reanalyze_position(symbol: str):
     if not position_to_manage:
         raise HTTPException(status_code=404, detail=f"Yönetilen pozisyon bulunamadı: {unified_symbol}")
         
-    reanalysis_prompt = core_agent.create_reanalysis_prompt(position_to_manage)
-    
     try:
-        logging.info(f"Agent Executor ile pozisyon yeniden analiz ediliyor: {unified_symbol}")
-        result = core_agent.agent_executor.invoke({"input": reanalysis_prompt})
-        parsed_data = core_agent.parse_agent_response(result.get("output", ""))
+        # DÜZELTME: Eskiden agent'a devredilen bu mantık artık burada işleniyor.
+        # Daha iyi bir analiz için güncel teknik verileri de prompt'a ekleyebiliriz,
+        # ancak şimdilik eski basit yapıyı koruyoruz.
+        reanalysis_prompt = core_agent.create_reanalysis_prompt(position_to_manage)
+        
+        logging.info(f"AI ile pozisyon yeniden analiz ediliyor: {unified_symbol}")
+        
+        # DÜZELTME: `llm_invoke_with_fallback` kullanılarak kota hatalarına karşı dayanıklılık sağlandı.
+        result = core_agent.llm_invoke_with_fallback(reanalysis_prompt)
+        
+        parsed_data = core_agent.parse_agent_response(result.content)
 
         if not parsed_data or "recommendation" not in parsed_data:
             raise HTTPException(status_code=500, detail="Yeniden analiz sırasında Agent'tan geçerli bir tavsiye alınamadı.")
         
-        # Frontend'in pozisyonu tanıması için sembolü yanıta ekliyoruz.
         parsed_data['symbol'] = unified_symbol
         return parsed_data
-
+        
+    except ResourceExhausted:
+        logging.critical(f"Yeniden analiz sırasında tüm AI modellerinin kotası doldu: {unified_symbol}")
+        raise HTTPException(status_code=429, detail="Tüm AI modelleri için kota aşıldı. Lütfen daha sonra tekrar deneyin veya planınızı yükseltin.")
     except Exception as e:
         logging.error(f"Pozisyon yeniden analiz edilirken hata oluştu ({unified_symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Pozisyon yeniden analiz edilirken beklenmedik bir hata oluştu.")

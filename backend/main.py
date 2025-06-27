@@ -1,7 +1,6 @@
-# ==============================================================================
-# File: backend/main.py
+# backend/main.py
 # @author: Memba Co.
-# ==============================================================================
+
 import logging
 import uvicorn
 import os
@@ -37,15 +36,9 @@ async def lifespan(app: FastAPI):
     logging.info("Uygulama başlatılıyor (lifespan)...")
     
     app.state.scheduler = scheduler
-
     database.init_db()
     app_config.load_config()
-    
-    # Global borsa örneğini başlat
     exchange_tools.initialize_exchange(app_config.settings.get('DEFAULT_MARKET_TYPE'))
-    
-    # Scanner modülü artık sınıf tabanlı olmadığından, ayrıca başlatılmasına gerek yoktur.
-    
     agent.initialize_agent()
     
     try:
@@ -69,6 +62,14 @@ async def lifespan(app: FastAPI):
         id="position_checker_job",
         max_instances=1
     )
+    # YENİ: Yetim emir kontrolü için yeni planlanmış görev
+    scheduler.add_job(
+        position_manager.check_for_orphaned_orders,
+        "interval",
+        seconds=app_config.settings.get('ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 300),
+        id="orphan_order_job",
+        max_instances=1
+    )
     if app_config.settings.get('PROACTIVE_SCAN_ENABLED'):
         scheduler.add_job(
             scanner.execute_single_scan_cycle, 
@@ -89,7 +90,7 @@ async def lifespan(app: FastAPI):
         logging.info("Telegram botu durduruldu.")
     scheduler.shutdown()
 
-app = FastAPI(title="Gemini Trading Agent API", version="4.0.0", lifespan=lifespan)
+app = FastAPI(title="Gemini Trading Agent API", version="4.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 api_router = APIRouter(prefix="/api")
@@ -104,27 +105,18 @@ api_router.include_router(scanner_router, dependencies=[Depends(get_current_user
 api_router.include_router(presets_router, dependencies=[Depends(get_current_user)])
 app.include_router(api_router)
 
-# === STATİK DOSYA SUNMA BÖLÜMÜ DÜZELTİLDİ ===
 try:
-    # Dockerfile, frontend dosyalarını /app/static içine koyduğu için
-    # doğrudan bu klasörü hedefliyoruz.
-    # main.py /app içinde çalıştığı için, göreceli yol /app/static olur.
     static_files_path = os.path.join(os.path.dirname(__file__), "static")
-    
     if os.path.exists(static_files_path):
-        # '/assets' yolunu /app/static/assets klasörüne bağla
         app.mount('/assets', StaticFiles(directory=os.path.join(static_files_path, "assets")), name='assets')
-        
         @app.get("/{full_path:path}", include_in_schema=False)
         async def serve_react_app(full_path: str):
             index_path = os.path.join(static_files_path, "index.html")
             if os.path.exists(index_path):
                 return FileResponse(index_path)
-            # Eğer index.html bulunamazsa 404 hatası ver
             raise HTTPException(status_code=404, detail="index.html not found")
     else:
         logging.warning(f"Statik dosyalar ('{static_files_path}') bulunamadı. Sadece API modunda çalışılıyor.")
-
 except Exception:
     logging.warning("Statik dosya yolu ayarlanırken hata oluştu. Sadece API modunda çalışılıyor.")
 

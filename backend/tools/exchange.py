@@ -53,6 +53,23 @@ def initialize_exchange(market_type: str):
         exchange = None
         raise e
 
+def fetch_open_orders(symbol: str = None) -> list:
+    """Borsadaki tüm açık emirleri veya belirtilen sembol için olanları çeker."""
+    if not exchange:
+        logging.error("Borsa bağlantısı başlatılmadığı için açık emirler alınamıyor.")
+        return []
+    try:
+        request_symbol = None
+        if symbol:
+            unified_symbol = _get_unified_symbol(symbol)
+            request_symbol = unified_symbol.replace('/', '') if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future' else unified_symbol
+        
+        open_orders = exchange.fetch_open_orders(request_symbol)
+        return open_orders
+    except Exception as e:
+        logging.error(f"Açık emirler alınırken hata: {e}", exc_info=True)
+        return []
+
 @retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3))
 def _fetch_price_natively(symbol: str) -> float | None:
     """Borsadan anlık fiyatı çeker (yeniden deneme mekanizması ile)."""
@@ -213,15 +230,10 @@ def execute_trade_order(symbol: str, side: str, amount: float, price: float = No
         return {"status": "error", "message": error_message}
 
 def get_symbols_from_exchange(exchange_instance, quote_currency: str) -> list:
-    if not exchange_instance:
-        logging.error("Borsa bağlantısı başlatılmadığı için semboller alınamıyor.")
-        return []
+    if not exchange_instance: logging.error("Borsa bağlantısı başlatılmadığı için semboller alınamıyor."); return []
     try:
         markets = exchange_instance.load_markets()
-        symbols = []
-        for market_id, market_info in markets.items():
-            if market_info.get('active', False) and market_info.get('quote') == quote_currency.upper() and market_info.get('type') == exchange_instance.options.get('defaultType'):
-                symbols.append(market_info['symbol'])
+        symbols = [market_info['symbol'] for market_id, market_info in markets.items() if market_info.get('active', False) and market_info.get('quote') == quote_currency.upper() and market_info.get('type') == exchange_instance.options.get('defaultType')]
         logging.info(f"{quote_currency} cinsinden {len(symbols)} adet {exchange_instance.options.get('defaultType')} sembolü borsadan çekildi.")
         return symbols
     except Exception as e:
@@ -243,19 +255,15 @@ def get_volume_spikes(timeframe: str, period: int, multiplier: float, min_volume
                 bars = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=period + 1)
                 if len(bars) < period + 1: continue
                 df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
-                df.dropna(subset=['volume'], inplace=True)
+                df['volume'] = pd.to_numeric(df['volume'], errors='coerce').dropna()
                 if len(df) < period + 1: continue
                 last_volume = df['volume'].iloc[-1]
                 average_volume = df['volume'].iloc[-period-1:-1].mean()
                 if pd.isna(last_volume) or pd.isna(average_volume) or average_volume == 0: continue
                 if last_volume > average_volume * multiplier:
-                    spike_info = {"symbol": _get_unified_symbol(symbol), "spike_ratio": last_volume / average_volume, "last_volume": last_volume, "average_volume": average_volume}
-                    volume_spikes.append(spike_info)
+                    volume_spikes.append({"symbol": _get_unified_symbol(symbol), "spike_ratio": last_volume / average_volume, "last_volume": last_volume, "average_volume": average_volume})
                 time.sleep(exchange.rateLimit / 1000)
-            except Exception as e:
-                logging.warning(f"{symbol} için hacim analizi sırasında hata: {e}")
-                continue
+            except Exception: continue
         volume_spikes.sort(key=lambda x: x['spike_ratio'], reverse=True)
         return volume_spikes
     except Exception as e:
@@ -271,10 +279,8 @@ def get_atr_value(symbol_and_timeframe: str) -> dict:
         if not bars or len(bars) < 20: return {"status": "error", "message": "Yetersiz veri"}
         df = pd.DataFrame(bars, columns=["timestamp", "open", "high", "low", "close", "volume"])
         atr = df.ta.atr()
-        if atr is None or atr.empty: return {"status": "error", "message": "ATR hesaplanamadı."}
-        last_atr = atr.iloc[-1]
-        if pd.isna(last_atr): return {"status": "error", "message": "ATR değeri NaN"}
-        return {"status": "success", "value": last_atr}
+        if atr is None or atr.empty or pd.isna(atr.iloc[-1]): return {"status": "error", "message": "ATR hesaplanamadı veya NaN"}
+        return {"status": "success", "value": atr.iloc[-1]}
     except Exception as e:
         logging.error(f"ATR alınırken hata: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
@@ -286,9 +292,7 @@ def get_top_gainers_losers(top_n: int, min_volume_usdt: int) -> list:
         tickers = exchange.fapiPublicGetTicker24hr()
         filtered = [t for t in tickers if t.get('symbol', '').endswith('USDT') and float(t.get('quoteVolume', 0)) > min_volume_usdt]
         filtered.sort(key=lambda x: float(x.get('priceChangePercent', 0)), reverse=True)
-        gainers = filtered[:top_n]
-        losers = filtered[-top_n:]
-        return [{**item, 'symbol': _get_unified_symbol(item['symbol'])} for item in (gainers + losers)]
+        return [{**item, 'symbol': _get_unified_symbol(item['symbol'])} for item in (filtered[:top_n] + filtered[-top_n:])]
     except Exception as e:
         logging.error(f"Gainer/Loser listesi alınırken hata: {e}", exc_info=True)
         return []
@@ -306,29 +310,23 @@ def get_open_positions_from_exchange() -> list:
 def update_stop_loss_order(symbol: str, side: str, amount: float, new_stop_price: float) -> str:
     from core import app_config
     if not exchange: return "HATA: Borsa bağlantısı başlatılmamış."
-    if not app_config.settings.get('LIVE_TRADING'):
-        return f"Simülasyon: {symbol} için SL emri {new_stop_price} olarak güncellendi."
-    if exchange.options.get('defaultType') != 'future':
-        return f"Hata: SL güncelleme sadece vadeli piyasada desteklenir."
+    if not app_config.settings.get('LIVE_TRADING'): return f"Simülasyon: {symbol} için SL emri {new_stop_price} olarak güncellendi."
+    if exchange.options.get('defaultType') != 'future': return f"Hata: SL güncelleme sadece vadeli piyasada desteklenir."
     
     unified_symbol = _get_unified_symbol(symbol)
     request_symbol = unified_symbol.replace('/', '') if exchange.id == 'binance' else unified_symbol
-
     try:
         open_orders = exchange.fetch_open_orders(request_symbol)
         stop_orders_to_cancel = [o for o in open_orders if 'stop' in o.get('type','').lower() and o.get('reduceOnly')]
         for order in stop_orders_to_cancel:
             exchange.cancel_order(order['id'], request_symbol)
-        
         time.sleep(0.5)
         opposite_side = 'sell' if side == 'buy' else 'buy'
-        
         if new_stop_price > 0:
             params_sl = {'stopPrice': new_stop_price, 'reduceOnly': True}
             exchange.create_order(request_symbol, 'STOP_MARKET', opposite_side, amount, None, params_sl)
             return f"Başarılı: {unified_symbol} için yeni SL emri {new_stop_price} olarak oluşturuldu."
-        else:
-            return "Hata: Geçersiz yeni stop-loss fiyatı."
+        return "Hata: Geçersiz yeni stop-loss fiyatı."
     except Exception as e:
         logging.error(f"HATA: SL güncellenemedi. Detay: {e}", exc_info=True)
         return f"HATA: SL güncellenemedi. Detay: {e}"
@@ -336,12 +334,10 @@ def update_stop_loss_order(symbol: str, side: str, amount: float, new_stop_price
 def cancel_all_open_orders(symbol: str) -> str:
     from core import app_config
     if not exchange: return "HATA: Borsa bağlantısı başlatılmamış."
-    if not app_config.settings.get('LIVE_TRADING'):
-        return f"Simülasyon: {symbol} için tüm açık emirler iptal edildi."
+    if not app_config.settings.get('LIVE_TRADING'): return f"Simülasyon: {symbol} için tüm açık emirler iptal edildi."
     
     unified_symbol = _get_unified_symbol(symbol)
     request_symbol = unified_symbol.replace('/', '') if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future' else unified_symbol
-
     try:
         exchange.cancel_all_orders(request_symbol)
         logging.info(f"İPTAL: {unified_symbol} için tüm açık emirler başarıyla iptal edildi.")
