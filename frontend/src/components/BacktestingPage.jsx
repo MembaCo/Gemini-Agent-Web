@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { History, PlayCircle, Loader2, SlidersHorizontal, Save, Trash2, FolderDown } from 'lucide-react';
+import TradeHistory from './TradeHistory';
 
 // Bu bileşenler, okunabilirlik için DashboardPage'den kopyalanmıştır.
 // Büyük projelerde, bu ortak bileşenler /components/common gibi bir klasöre taşınabilir.
 const StatCard = ({ title, value, isLoading, valueClassName = '' }) => ( <div className="bg-gray-800 p-4 sm:p-6 rounded-xl border border-gray-700"> <h2 className="text-gray-400 text-sm font-medium">{title}</h2> {isLoading ? <div className="animate-pulse bg-gray-700 h-8 w-3/4 mt-2 rounded-md"></div> : <p className={`text-2xl font-semibold mt-1 ${valueClassName}`} dangerouslySetInnerHTML={{ __html: value }}></p>} </div> );
-const TradeHistory = ({ history, isLoading }) => ( <div className="bg-gray-800 p-4 sm:p-6 rounded-xl border border-gray-700 mt-8"><h2 className="text-lg font-semibold text-white mb-4">İşlem Geçmişi</h2><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-xs text-gray-400 uppercase bg-gray-700/50"><tr><th scope="col" className="px-4 py-3">Sembol</th><th scope="col" className="px-4 py-3">Yön</th><th scope="col" className="px-4 py-3">Giriş</th><th scope="col" className="px-4 py-3">Çıkış</th><th scope="col" className="px-4 py-3">P&L (USDT)</th><th scope="col" className="px-4 py-3">Durum</th><th scope="col" className="px-4 py-3">Kapanış Zamanı</th></tr></thead><tbody> {isLoading ? <tr><td colSpan="7" className="text-center p-8 text-gray-400">Yükleniyor...</td></tr> : history && history.length > 0 ? history.map(trade => ( <tr key={trade.id} className="border-b border-gray-700 hover:bg-gray-900/30"><td className="px-4 py-3 font-medium text-white">{trade.symbol}</td><td className="px-4 py-3">{trade.side.toUpperCase()}</td><td className="px-4 py-3">{trade.entry_price.toFixed(4)}</td><td className="px-4 py-3">{trade.close_price.toFixed(4)}</td><td className={`px-4 py-3 font-semibold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{trade.pnl.toFixed(2)}</td><td className="px-4 py-3">{trade.status}</td><td className="px-4 py-3 text-gray-400">{new Date(trade.closed_at).toLocaleString('tr-TR')}</td></tr>)) : <tr><td colSpan="7" className="text-center p-8 text-gray-400">Testi çalıştırmak için yukarıdaki formu kullanın.</td></tr>}</tbody></table></div></div> );
-
-
 
 
 export const BacktestingPage = () => {

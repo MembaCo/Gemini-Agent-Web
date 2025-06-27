@@ -5,6 +5,10 @@ from .database import (
     init_db,
     get_db_connection,
     
+    # Olay (Event) Fonksiyonları - YENİ
+    log_event,
+    get_events,
+    
     # Ayar Fonksiyonları
     get_all_settings,
     update_settings,
@@ -27,7 +31,7 @@ from .database import (
     add_preset,
     delete_preset,
     
-    # YENİ: Scanner Adayları Fonksiyonları
+    # Scanner Adayları Fonksiyonları
     save_scanner_candidates,
     get_all_scanner_candidates,
     update_scanner_candidate,
