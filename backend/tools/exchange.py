@@ -28,11 +28,19 @@ def initialize_exchange(market_type: str):
     global exchange
     if exchange:
         return
+
+    # --- YENİ DEBUG LOGLARI ---
+    logging.info(">>> Borsa bağlantısı başlatılıyor...")
     use_testnet = str_to_bool(os.getenv("USE_TESTNET", "False"))
     api_key = os.getenv("BINANCE_API_KEY")
     secret_key = os.getenv("BINANCE_SECRET_KEY")
+
     if not api_key or not secret_key:
-        raise ValueError("API anahtarları .env dosyasında bulunamadı!")
+        logging.critical("!!! KRİTİK HATA: BINANCE_API_KEY veya BINANCE_SECRET_KEY .env dosyasında bulunamadı veya boş. Lütfen backend/.env dosyasını kontrol edin.")
+        return
+
+    logging.info(f"API Anahtarları bulundu. Testnet Modu: {use_testnet}, Piyasa Tipi: {market_type}")
+    # --- DEBUG LOGLARI SONU ---
     
     config_data = {
         "apiKey": api_key, "secret": secret_key,
@@ -44,12 +52,13 @@ def initialize_exchange(market_type: str):
     
     if use_testnet and market_type.lower() == 'future':
         exchange.set_sandbox_mode(True)
+        logging.info("Binance Testnet modu etkinleştirildi.")
 
     try:
         _load_markets_with_retry(exchange)
-        logging.info(f"--- Piyasalar, '{market_type.upper()}' pazarı için başarıyla yüklendi. ---")
+        logging.info(f"--- Piyasalar, '{market_type.upper()}' pazarı için başarıyla yüklendi. Borsa bağlantısı AKTİF. ---")
     except Exception as e:
-        logging.critical(f"'{market_type.upper()}' piyasaları yüklenirken kritik hata: {e}", exc_info=True)
+        logging.critical(f"!!! KRİTİK HATA: Borsa piyasaları yüklenemedi. Bu genellikle geçersiz API anahtarlarından veya Binance bağlantı sorunlarından kaynaklanır. Hata: {e}", exc_info=True)
         exchange = None
         raise e
 
