@@ -53,6 +53,7 @@ Dağıtım (Deployment): Docker, Docker Compose.
 
 Bu uygulama, Docker ile kolayca kurulacak şekilde tasarlanmıştır. Başlamak için bilgisayarınızda Git ve Docker Desktop'ın kurulu olması yeterlidir.
 
+<<<<<<< HEAD
 1. Projeyi Klonlayın
 
 Bash
@@ -150,3 +151,16 @@ Projeye katkıda bulunmak isterseniz, lütfen bir "issue" açarak veya "pull req
 📄 Lisans
 
 Bu proje MIT Lisansı altında lisanslanmıştır. Daha fazla bilgi için LICENSE dosyasına bakın.
+=======
+**1. Projeyi Klonlayın**
+```bash
+git clone [https://github.com/MembaCo/Gemini-Agent-Web.git](https://github.com/MembaCo/Gemini-Agent-Web.git)
+cd Gemini-Agent-Web
+
+**Ekran Görüntüleri**
+![Alt text](https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/refs/heads/main/main/assets/gallery-1.png)
+
+![Alt text](https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/refs/heads/main/main/assets/gallery-2.png)
+
+![Alt text](https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/refs/heads/main/main/assets/gallery-3.png)
+>>>>>>> 82a3b32aeb5f6e1d83eb59683eab0af1e4ca9d27
