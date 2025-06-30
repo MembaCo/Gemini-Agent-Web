@@ -174,8 +174,12 @@ def handle_partial_tp(position: dict, current_price: float):
                 update_stop_loss_order(symbol=position['symbol'], side=side, amount=remaining_amount, new_stop_price=new_sl_price)
                 database.update_position_after_partial_tp(position['symbol'], remaining_amount, new_sl_price)
                 send_telegram_message(format_partial_tp_message(position['symbol'], amount_to_close, remaining_amount, entry_price))
+                log_message = f"Kısmi kâr alındı: {position['symbol']} pozisyonunda SL giriş seviyesine çekildi."
+                database.log_event("SUCCESS", "Strategy", log_message)
             else:
+                log_message = f"Kısmi TP emri gönderilemedi: {position['symbol']} - {result.get('message')}"
                 logging.error(f"Kısmi kâr alma sırasında pozisyon kapatılamadı: {result.get('message')}")
+                database.log_event("ERROR", "Trade", log_message)
 
 def handle_trailing_stop_loss(position: dict, current_price: float):
     entry_price = position.get("entry_price", 0.0)
@@ -196,6 +200,8 @@ def handle_trailing_stop_loss(position: dict, current_price: float):
             result = update_stop_loss_order(symbol=position['symbol'], side=side, amount=position['amount'], new_stop_price=new_sl)
             if "Başarılı" in str(result) or "Simülasyon" in str(result):
                 database.update_position_sl(position['symbol'], new_sl)
+                log_message = f"İz Süren SL güncellendi: {position['symbol']} için yeni SL: {new_sl:.4f} USDT."
+                database.log_event("INFO", "Strategy", log_message)
 
 async def check_for_orphaned_orders():
     """
@@ -224,6 +230,8 @@ async def check_for_orphaned_orders():
                 logging.warning(f"Yetim Emir Tespit Edildi: {order_symbol} sembolünde pozisyon kapalı ama {order['id']} ID'li emir açık. Emir iptal ediliyor.")
                 try:
                     exchange_tools.exchange.cancel_order(order['id'], order['symbol'])
+                    log_message = f"Yetim emir temizlendi: {order_symbol} pozisyonu kapalı olmasına rağmen açık bir emir bulundu ve iptal edildi."
+                    database.log_event("INFO", "Sync", log_message)
                     send_telegram_message(f"🧹 **Otomatik Temizlik** 🧹\n`{order_symbol}` için pozisyon kapalı olmasına rağmen açık `{order['type']}` emri bulundu ve iptal edildi.")
                     orphaned_orders_found += 1
                 except Exception as e:
