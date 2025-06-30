@@ -4,8 +4,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import Field
 import logging
 
-# YENİ: Borsa bağlantısının durumunu doğrudan kontrol etmek için import edildi
-from tools.exchange import exchange
+# YENİ: Borsa bağlantısını doğrudan kontrol etmek yerine modülü import ediyoruz
+from tools import exchange as exchange_tools
 from core.backtester import Backtester
 from core.security import get_current_user
 from .schemas import BacktestRunRequest
@@ -24,8 +24,8 @@ async def run_backtest(
     current_user: str = Depends(get_current_user)
 ):
     # --- YENİ VE DAHA ANLAŞILIR HATA KONTROLÜ ---
-    # Herhangi bir işlem yapmadan önce borsa bağlantısının varlığını kontrol et.
-    if not exchange:
+    # DÜZELTME: Borsa bağlantısının varlığı modül üzerinden kontrol ediliyor.
+    if not exchange_tools.exchange:
         logging.error("Backtest API çağrıldı ancak borsa bağlantısı (exchange) mevcut değil. Başlangıçta API anahtarlarıyla ilgili bir sorun var.")
         raise HTTPException(
             status_code=503, # Service Unavailable

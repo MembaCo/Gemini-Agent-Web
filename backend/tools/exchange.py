@@ -10,12 +10,10 @@ import logging
 from dotenv import load_dotenv
 from langchain.tools import tool
 from tenacity import retry, stop_after_attempt, wait_exponential
-# YENİ: Eksik olan 'Path' import ifadesi eklendi.
 from pathlib import Path
 
 from .utils import _get_unified_symbol, _parse_symbol_timeframe_input, str_to_bool
 
-# .env dosyasının yolunu, bu dosyanın bulunduğu konuma göre dinamik olarak belirle.
 dotenv_path = Path(__file__).resolve().parent.parent / '.env'
 logging.info(f".env dosyası şu konumda aranıyor: {dotenv_path}")
 load_dotenv(dotenv_path=dotenv_path)
@@ -49,7 +47,10 @@ def initialize_exchange(market_type: str):
     
     config_data = {
         "apiKey": api_key, "secret": secret_key,
-        "options": {"defaultType": market_type.lower()},
+        "options": {
+            "defaultType": market_type.lower(),
+            "warnOnFetchOpenOrdersWithoutSymbol": False,
+        },
         "enableRateLimit": True, 'timeout': 30000,
     }
 
@@ -161,10 +162,13 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
 
         df.ta.rsi(length=14, append=True)
         df.ta.adx(length=14, append=True)
+        
+        rows_before_dropna = len(df)
         df.dropna(inplace=True)
+        rows_after_dropna = len(df)
 
         if df.empty:
-            logging.warning(f"İndikatör hesaplaması sonrası tüm veriler NaN içerdiği için atıldı. Sembol: {symbol}, Zaman Aralığı: {timeframe}")
+            logging.warning(f"İndikatör hesaplaması sonrası tüm veriler NaN içerdiği için atıldı. Sembol: {symbol}, Zaman Aralığı: {timeframe}. (Satır sayısı: {rows_before_dropna} -> {rows_after_dropna})")
             return {"status": "error", "message": f"Hesaplama sonrası geçerli veri kalmadı. Sembol: {symbol}"}
 
         last = df.iloc[-1]
@@ -312,10 +316,16 @@ def get_top_gainers_losers(top_n: int, min_volume_usdt: int) -> list:
         return []
 
 def get_open_positions_from_exchange() -> list:
+    """Borsadan mevcut açık pozisyonları çeker."""
     from core import app_config
-    if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future': return []
+    if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future':
+        return []
     try:
-        positions = exchange.fetch_positions(params={'type': app_config.settings.get('DEFAULT_MARKET_TYPE')})
+        # DÜZELTME: `params` argümanı kaldırıldı. ccxt, borsa nesnesi başlatılırken
+        # verilen `defaultType` ayarını otomatik olarak kullanır. Bu, daha standart ve
+        # güvenilir bir yöntemdir ve 'hayalet pozisyon' sorununu çözer.
+        positions = exchange.fetch_positions()
+        # Sadece miktarı sıfırdan büyük olan gerçek pozisyonları döndür
         return [p for p in positions if p.get('contracts') and float(p['contracts']) != 0]
     except Exception as e:
         logging.error(f"Borsadan pozisyonlar alınırken hata: {e}", exc_info=True)

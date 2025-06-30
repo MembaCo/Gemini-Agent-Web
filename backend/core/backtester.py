@@ -4,13 +4,13 @@ import pandas as pd
 import numpy as np
 import logging
 import time
-from .scanner import calculate_ma_signal, calculate_rsi_signal
-from tools.exchange import exchange as global_exchange_instance
+import pandas_ta as ta # pandas-ta kütüphanesi eklendi
+from tools import exchange as exchange_tools
 
 class Backtester:
     def __init__(self, initial_balance: float, preset: dict):
         self.preset = preset
-        self.exchange = global_exchange_instance
+        self.exchange = exchange_tools.exchange
         self.initial_balance = initial_balance
         self.position_size_percent = self.preset.get('RISK_PER_TRADE_PERCENT', 1.0)
         self.trading_fee_percent = self.preset.get('trading_fee_percent', 0.1)
@@ -63,23 +63,50 @@ class Backtester:
         df['signal'] = signals
 
         results = self._simulate_trades(df, symbol)
-        final_results = self._calculate_performance_metrics(results, symbol, start_date, end_date)
+        final_results = self._calculate_performance_metrics(results, symbol, start_date, end_date, interval)
 
         logging.info(f"Backtest tamamlandı. Son Bakiye: {final_results.get('stats', {}).get('final_balance', 0):.2f}")
         return final_results
 
     def _generate_signals(self, df: pd.DataFrame) -> pd.Series:
-        final_signals = pd.Series('NEUTRAL', index=df.index)
-        
+        """
+        Tüm DataFrame için vektörel olarak sinyal üretir.
+        NOT: Bu fonksiyon, scanner'daki tekil sinyal üreten fonksiyonlardan farklıdır.
+        """
+        signals = pd.Series('NEUTRAL', index=df.index, name="signals")
+
+        # Hareketli Ortalama Kesişim Stratejisi
         if self.preset.get('ma_short') and self.preset.get('ma_long'):
-            ma_signals = calculate_ma_signal(df['close'], self.preset['ma_short'], self.preset['ma_long'])
-            final_signals[ma_signals != 'NEUTRAL'] = ma_signals
+            short_window = self.preset['ma_short']
+            long_window = self.preset['ma_long']
+            
+            ma_short = df.ta.sma(length=short_window)
+            ma_long = df.ta.sma(length=long_window)
+            
+            # Golden Cross (Al Sinyali)
+            buy_signals = (ma_short > ma_long) & (ma_short.shift(1) <= ma_long.shift(1))
+            signals.loc[buy_signals] = 'BUY'
+            
+            # Death Cross (Sat Sinyali)
+            sell_signals = (ma_short < ma_long) & (ma_short.shift(1) >= ma_long.shift(1))
+            signals.loc[sell_signals] = 'SELL'
 
+        # RSI Stratejisi (MA sinyallerinin üzerine yazabilir)
         if self.preset.get('rsi_period'):
-            rsi_signals = calculate_rsi_signal(df['close'], self.preset['rsi_period'], self.preset.get('rsi_overbought', 70), self.preset.get('rsi_oversold', 30))
-            final_signals[rsi_signals != 'NEUTRAL'] = rsi_signals
+            rsi_period = self.preset['rsi_period']
+            rsi_overbought = self.preset.get('rsi_overbought', 70)
+            rsi_oversold = self.preset.get('rsi_oversold', 30)
 
-        return final_signals.shift(1).fillna('NEUTRAL')
+            rsi = df.ta.rsi(length=rsi_period)
+            if rsi is not None:
+                # RSI Aşırı Satım (Al Sinyali)
+                signals.loc[rsi < rsi_oversold] = 'BUY'
+                # RSI Aşırı Alım (Sat Sinyali)
+                signals.loc[rsi > rsi_overbought] = 'SELL'
+
+        # İleriye dönük bakma hatasını (lookahead bias) önlemek için sinyalleri bir bar kaydır.
+        return signals.shift(1).fillna('NEUTRAL')
+
 
     def _simulate_trades(self, df: pd.DataFrame, symbol: str) -> dict:
         balance = self.initial_balance
@@ -108,7 +135,7 @@ class Backtester:
         
         return {'trades': trades, 'balance_history': pd.DataFrame(balance_history).set_index('timestamp')}
 
-    def _calculate_performance_metrics(self, sim_results: dict, symbol, start_date, end_date) -> dict:
+    def _calculate_performance_metrics(self, sim_results: dict, symbol, start_date, end_date, interval: str) -> dict:
         trades = sim_results['trades']
         balance_history = sim_results['balance_history']['value']
         
@@ -144,15 +171,20 @@ class Backtester:
             "amount": p['entry']['amount'], "entry_price": p['entry']['price'],
             "close_price": p['exit']['price'], "pnl": p.get('pnl', 0),
             "status": "CLOSED", "opened_at": p['entry']['timestamp'],
-            "closed_at": p['exit']['timestamp'], "timeframe": "N/A"
+            "closed_at": p['exit']['timestamp'], "timeframe": interval
         } for p in trade_pairs]
 
         return {
             'stats': {
-                'total_pnl': total_pnl, 'win_rate': win_rate, 'winning_trades': winning_trades,
-                'losing_trades': losing_trades, 'total_trades': total_trades,
+                'total_pnl': total_pnl,
+                'total_pnl_percent': total_pnl_percent,
+                'win_rate': win_rate, 
+                'winning_trades': winning_trades,
+                'losing_trades': losing_trades, 
+                'total_trades': total_trades,
                 'profit_factor': (sum(p['pnl'] for p in trade_pairs if p['pnl'] > 0) / abs(sum(p['pnl'] for p in trade_pairs if p['pnl'] < 0))) if losing_trades > 0 and sum(p['pnl'] for p in trade_pairs if p['pnl'] < 0) != 0 else float('inf'),
-                'max_drawdown_percent': max_drawdown, 'sharpe_ratio': sharpe_ratio,
+                'max_drawdown_percent': max_drawdown, 
+                'sharpe_ratio': sharpe_ratio,
                 'final_balance': final_balance
             },
             'trade_history': trade_history_list,

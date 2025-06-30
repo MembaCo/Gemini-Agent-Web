@@ -9,14 +9,13 @@ from tools import (
     get_open_positions_from_exchange, get_atr_value, _get_unified_symbol,
     fetch_open_orders, cancel_all_open_orders
 )
-# DÜZELTME: 'exchange' nesnesi, fonksiyonların başında kontrol edilebilmesi için doğrudan import ediliyor.
-from tools.exchange import exchange
+from tools import exchange as exchange_tools
 from core.trader import close_existing_trade, TradeException
 from notifications import send_telegram_message, format_partial_tp_message
 
 def _ensure_exchange_is_available():
     """Yardımcı fonksiyon: Borsa bağlantısının varlığını kontrol eder."""
-    if not exchange:
+    if not exchange_tools.exchange:
         logging.warning("İşlem yapılamadı: Borsa bağlantısı (exchange) mevcut değil.")
         return False
     return True
@@ -41,6 +40,7 @@ def sync_positions_on_startup():
         for symbol in ghost_symbols:
             logging.warning(f"Hayalet Pozisyon Bulundu: '{symbol}' veritabanında var ama borsada yok. Veritabanından kaldırılıyor...")
             database.remove_position(symbol)
+            database.log_event("WARNING", "Sync", f"Hayalet pozisyon bulundu ve silindi: '{symbol}' veritabanında vardı ama borsada yoktu.")
             send_telegram_message(f"⚠️ **Senkronizasyon Uyarısı** ⚠️\n`{symbol}` pozisyonu veritabanında bulunuyordu ancak borsada kapalıydı. Veritabanı temizlendi.")
 
         unmanaged_symbols = set(exchange_positions_map.keys()) - db_symbols_set
@@ -74,6 +74,7 @@ def sync_positions_on_startup():
 
                 position_to_add = {"symbol": symbol_unified, "side": side, "amount": amount, "entry_price": entry_price, "timeframe": timeframe, "leverage": leverage, "stop_loss": stop_loss_price, "take_profit": take_profit_price}
                 database.add_position(position_to_add)
+                database.log_event("INFO", "Sync", f"Yönetilmeyen pozisyon '{symbol_unified}' sisteme aktarıldı.")
                 logging.info(f"✅ BAŞARILI: '{symbol_unified}' pozisyonu içe aktarıldı ve yönetime alındı.")
                 send_telegram_message(f"✅ **Pozisyon İçe Aktarıldı** ✅\n`{symbol_unified}` pozisyonu borsada açık bulunduğu için yönetime alındı.")
             except Exception as import_e:
@@ -81,7 +82,9 @@ def sync_positions_on_startup():
 
         total_synced = len(ghost_symbols) + len(unmanaged_symbols)
         if total_synced > 0:
-            logging.info(f"<<< Pozisyon senkronizasyonu tamamlandı. {len(ghost_symbols)} hayalet pozisyon temizlendi, {len(unmanaged_symbols)} pozisyon içe aktarıldı/denendi.")
+            msg = f"Pozisyon senkronizasyonu tamamlandı. {len(ghost_symbols)} hayalet pozisyon temizlendi, {len(unmanaged_symbols)} pozisyon içe aktarıldı/denendi."
+            logging.info(f"<<< {msg}")
+            database.log_event("INFO", "Sync", msg)
         else:
             logging.info("<<< Tüm pozisyonlar senkronize. Herhangi bir tutarsızlık bulunamadı.")
     except Exception as e:
@@ -201,7 +204,7 @@ async def check_for_orphaned_orders():
     """
     if not _ensure_exchange_is_available(): return
 
-    if not app_config.settings.get('LIVE_TRADING') or exchange.options.get('defaultType') != 'future':
+    if not app_config.settings.get('LIVE_TRADING') or exchange_tools.exchange.options.get('defaultType') != 'future':
         return
 
     logging.info("Yetim Emir Kontrolü (Orphan Order Check) başlatılıyor...")
@@ -220,7 +223,7 @@ async def check_for_orphaned_orders():
             if order_symbol not in active_position_symbols:
                 logging.warning(f"Yetim Emir Tespit Edildi: {order_symbol} sembolünde pozisyon kapalı ama {order['id']} ID'li emir açık. Emir iptal ediliyor.")
                 try:
-                    exchange.cancel_order(order['id'], order['symbol'])
+                    exchange_tools.exchange.cancel_order(order['id'], order['symbol'])
                     send_telegram_message(f"🧹 **Otomatik Temizlik** 🧹\n`{order_symbol}` için pozisyon kapalı olmasına rağmen açık `{order['type']}` emri bulundu ve iptal edildi.")
                     orphaned_orders_found += 1
                 except Exception as e:

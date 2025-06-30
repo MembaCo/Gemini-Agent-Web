@@ -13,9 +13,7 @@ from starlette.responses import FileResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import database
-# 'exchange' nesnesini doğrudan import ederek durumunu kontrol edeceğiz.
 from tools import exchange as exchange_tools
-from tools.exchange import exchange
 from core import agent, scanner, position_manager, app_config
 from core.security import get_current_user
 from api import (
@@ -42,26 +40,28 @@ async def lifespan(app: FastAPI):
     database.init_db()
     app_config.load_config()
     
-    # Borsa bağlantısını kur ve durumu kontrol et
     try:
         exchange_tools.initialize_exchange(app_config.settings.get('DEFAULT_MARKET_TYPE'))
-        # EKLENEN TEŞHİS ADIMI: Bağlantı nesnesinin durumunu logla
-        logging.info(f"--- BAŞLANGIÇ KONTROLÜ --- Borsa bağlantı objesi durumu: {'Kuruldu' if exchange else '!!! KURULAMADI (None) !!!'}")
-        if not exchange:
-            # Eğer exchange hala None ise, bu kritik bir hatadır.
+        logging.info(f"--- BAŞLANGIÇ KONTROLÜ --- Borsa bağlantı objesi durumu: {'Kuruldu' if exchange_tools.exchange else '!!! KURULAMADI (None) !!!'}")
+        if not exchange_tools.exchange:
             raise ConnectionError("Borsa bağlantısı initialize edilemedi ancak hata fırlatmadı. .env dosyasını kontrol edin.")
             
     except Exception as e:
         logging.critical(f"--- KRİTİK BAŞLANGIÇ HATASI --- Borsa bağlantısı kurulamadı: {e}", exc_info=True)
-        # Hata durumunda uygulamanın devam etmesini engellemek için tekrar fırlat
+        # YENİ: Başlangıç hatasını veritabanına kaydet
+        database.log_event("CRITICAL", "Application", f"Uygulama başlatılamadı: Borsa bağlantı hatası - {e}")
         raise e
 
     agent.initialize_agent()
     
     try:
+        # YENİ: Senkronizasyon başlangıcını logla
+        database.log_event("INFO", "Sync", "Başlangıçta pozisyon senkronizasyonu başlatıldı.")
         position_manager.sync_positions_on_startup()
     except Exception as e:
-        logging.critical(f"Uygulama başlangıcında pozisyon senkronizasyonu başarısız oldu: {e}")
+        error_msg = f"Başlangıçta pozisyon senkronizasyonu başarısız oldu: {e}"
+        logging.critical(error_msg)
+        database.log_event("CRITICAL", "Sync", error_msg)
     
     telegram_app = create_telegram_app()
     if telegram_app:
@@ -70,41 +70,31 @@ async def lifespan(app: FastAPI):
         await telegram_app.start()
         asyncio.create_task(telegram_app.updater.start_polling())
         logging.info("Telegram botu başlatıldı ve komutları dinliyor.")
+        database.log_event("INFO", "Telegram", "Telegram botu başarıyla başlatıldı.")
     
     logging.info("Arka plan görevleri (Scheduler) ayarlanıyor...")
-    scheduler.add_job(
-        position_manager.check_all_managed_positions, 
-        "interval", 
-        seconds=app_config.settings.get('POSITION_CHECK_INTERVAL_SECONDS', 60), 
-        id="position_checker_job",
-        max_instances=1
-    )
-    scheduler.add_job(
-        position_manager.check_for_orphaned_orders,
-        "interval",
-        seconds=app_config.settings.get('ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 300),
-        id="orphan_order_job",
-        max_instances=1
-    )
+    scheduler.add_job(position_manager.check_all_managed_positions, "interval", seconds=app_config.settings.get('POSITION_CHECK_INTERVAL_SECONDS', 60), id="position_checker_job", max_instances=1)
+    scheduler.add_job(position_manager.check_for_orphaned_orders, "interval", seconds=app_config.settings.get('ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 300), id="orphan_order_job", max_instances=1)
     if app_config.settings.get('PROACTIVE_SCAN_ENABLED'):
-        scheduler.add_job(
-            scanner.execute_single_scan_cycle, 
-            "interval", 
-            seconds=app_config.settings.get('PROACTIVE_SCAN_INTERVAL_SECONDS', 900), 
-            id="scanner_job",
-            max_instances=1
-        )
+        scheduler.add_job(scanner.execute_single_scan_cycle, "interval", seconds=app_config.settings.get('PROACTIVE_SCAN_INTERVAL_SECONDS', 900), id="scanner_job", max_instances=1)
     
     scheduler.start()
     logging.info("Uygulama başlangıcı tamamlandı. API kullanıma hazır.")
+    # YENİ: Başarılı başlangıcı veritabanına kaydet
+    database.log_event("SUCCESS", "Application", "Uygulama başarıyla başlatıldı ve çalışıyor.")
     yield
+    
+    # YENİ: Kapanış olayını veritabanına kaydet
     logging.info("Uygulama kapatılıyor (lifespan)...")
+    database.log_event("INFO", "Application", "Uygulama kapatılıyor...")
     if hasattr(app.state, "telegram_app") and app.state.telegram_app and hasattr(app.state.telegram_app, 'updater') and app.state.telegram_app.updater.running:
         await app.state.telegram_app.updater.stop()
         await app.state.telegram_app.stop()
         await app.state.telegram_app.shutdown()
         logging.info("Telegram botu durduruldu.")
     scheduler.shutdown()
+    logging.info("Arka plan görevleri (Scheduler) kapatıldı.")
+
 
 app = FastAPI(title="Gemini Trading Agent API", version="4.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])

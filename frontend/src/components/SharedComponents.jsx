@@ -77,3 +77,44 @@ export const ConfirmationModal = ({ isVisible, onClose, onConfirm, title, childr
         </div>
     </Modal>
 );
+
+// YENİ: Proaktif Tarama Sonuçları için Modal Bileşeni
+export const ProactiveScanResultsModal = ({ opportunities, isVisible, onClose, onConfirmTrade, openingTradeSymbol }) => {
+    if (!isVisible || opportunities.length === 0) return null;
+
+    return (
+        <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-2xl">
+            <div className="flex justify-between items-center mb-1">
+                <h2 className="text-2xl font-bold text-white">Proaktif Tarama Sonuçları</h2>
+                 <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white"><X size={24} /></button>
+            </div>
+            <p className="text-sm text-gray-400 mb-6">{opportunities.length} adet onay bekleyen fırsat bulundu.</p>
+            <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+                {opportunities.map((opp, index) => {
+                    const isOpeningThisTrade = openingTradeSymbol === opp.symbol;
+                    return (
+                        <div key={index} className="bg-gray-900/50 p-4 rounded-lg flex justify-between items-center gap-4">
+                            <div className="flex-grow">
+                                <p className="font-bold text-white">{opp.symbol} <span className="text-xs text-gray-400">({opp.timeframe})</span></p>
+                                <p className={`font-semibold ${opp.recommendation === 'AL' ? 'text-green-400' : 'text-red-400'}`}>{opp.recommendation === 'AL' ? 'ALIM FIRSATI' : 'SATIM FIRSATI'}</p>
+                                <p className="text-xs text-gray-500 mt-1">{opp.reason}</p>
+                            </div>
+                            <button
+                                onClick={() => onConfirmTrade(opp)}
+                                disabled={isOpeningThisTrade}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md flex-shrink-0 disabled:bg-gray-500 disabled:cursor-wait w-32"
+                            >
+                                {isOpeningThisTrade ? <Loader2 className="animate-spin mx-auto" /> : 'Onayla'}
+                            </button>
+                        </div>
+                    );
+                 })}
+            </div>
+            <div className="mt-6 flex justify-end">
+                <button onClick={onClose} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-md">
+                    Tümünü Kapat
+                </button>
+            </div>
+        </Modal>
+    );
+};

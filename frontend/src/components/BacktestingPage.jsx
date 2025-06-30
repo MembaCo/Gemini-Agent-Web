@@ -186,18 +186,18 @@ export const BacktestingPage = () => {
                 <div className="animate-fade-in-up mt-12">
                     <h3 className="text-xl font-bold text-white mb-4 text-center">Backtest Sonuçları</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6">
-                        <StatCard title="Son Bakiye" isLoading={isLoading} value={`${(results.final_balance || 0).toFixed(2)} USDT`} valueClassName={(results.total_pnl_percent || 0) >= 0 ? 'text-green-400' : 'text-red-400'} />
-                        <StatCard title="Toplam P&L (%)" isLoading={isLoading} value={`${(results.total_pnl_percent || 0).toFixed(2)}%`} valueClassName={(results.total_pnl_percent || 0) >= 0 ? 'text-green-400' : 'text-red-400'} />
-                        <StatCard title="Maks. Düşüş (%)" isLoading={isLoading} value={`${(results.max_drawdown_percent || 0).toFixed(2)}%`} valueClassName="text-yellow-400" />
-                        <StatCard title="Sharpe Oranı" isLoading={isLoading} value={`${(results.sharpe_ratio || 0).toFixed(3)}`} />
-                        <StatCard title="Kazanma Oranı" isLoading={isLoading} value={`${(results.win_rate || 0).toFixed(2)}%`} />
-                        <StatCard title="Kazanan / Kaybeden" isLoading={isLoading} value={`<span class="text-green-400">${results.winning_trades || 0}</span> / <span class="text-red-400">${results.losing_trades || 0}</span>`} />
-                        <StatCard title="Toplam İşlem" isLoading={isLoading} value={results.total_trades || 0} />
+                        <StatCard title="Son Bakiye" isLoading={isLoading} value={`${(results.stats.final_balance || 0).toFixed(2)} USDT`} valueClassName={(results.stats.total_pnl_percent || 0) >= 0 ? 'text-green-400' : 'text-red-400'} />
+                        <StatCard title="Toplam P&L (%)" isLoading={isLoading} value={`${(results.stats.total_pnl_percent || 0).toFixed(2)}%`} valueClassName={(results.stats.total_pnl_percent || 0) >= 0 ? 'text-green-400' : 'text-red-400'} />
+                        <StatCard title="Maks. Düşüş (%)" isLoading={isLoading} value={`${(results.stats.max_drawdown_percent || 0).toFixed(2)}%`} valueClassName="text-yellow-400" />
+                        <StatCard title="Sharpe Oranı" isLoading={isLoading} value={`${(results.stats.sharpe_ratio || 0).toFixed(3)}`} />
+                        <StatCard title="Kazanma Oranı" isLoading={isLoading} value={`${(results.stats.win_rate || 0).toFixed(2)}%`} />
+                        <StatCard title="Kazanan / Kaybeden" isLoading={isLoading} value={`<span class="text-green-400">${results.stats.winning_trades || 0}</span> / <span class="text-red-400">${results.stats.losing_trades || 0}</span>`} />
+                        <StatCard title="Toplam İşlem" isLoading={isLoading} value={results.stats.total_trades || 0} />
                     </div>
-                     {results.trades && (
+                     {results.trade_history && results.trade_history.length > 0 && (
                         <div className="mt-8 bg-gray-800 p-4 sm:p-6 rounded-xl border border-gray-700">
                            <h2 className="text-lg font-semibold text-white mb-4">İşlem Listesi</h2>
-                           <TradeHistory history={results.trades.map(t => ({...t, entry_price: t.price, close_price: 0, pnl: 0, status: t.type, closed_at: t.timestamp}))} isLoading={isLoading} />
+                           <TradeHistory history={results.trade_history} isLoading={isLoading} />
                         </div>
                     )}
                 </div>

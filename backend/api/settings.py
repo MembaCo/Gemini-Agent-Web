@@ -53,6 +53,11 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_VOLUME_TIMEFRAME: Optional[str] = None
     PROACTIVE_SCAN_VOLUME_MULTIPLIER: Optional[float] = None
     PROACTIVE_SCAN_VOLUME_PERIOD: Optional[int] = None
+     # YENİ: Ön filtreleme ayarlarını API'ye ekliyoruz.
+    PROACTIVE_SCAN_PREFILTER_ENABLED: Optional[bool] = None
+    PROACTIVE_SCAN_RSI_LOWER: Optional[int] = None
+    PROACTIVE_SCAN_RSI_UPPER: Optional[int] = None
+    PROACTIVE_SCAN_ADX_THRESHOLD: Optional[int] = None
 
 def reschedule_jobs(scheduler, new_settings: dict):
     """Çalışan scheduler görevlerini yeni ayarlara göre günceller."""
