@@ -243,7 +243,7 @@ export const DashboardPage = () => {
 
     return (
         <>
-            <Header appVersion={settings.APP_VERSION || "4.1.0"} onSettingsClick={openSettingsModal} isLoading={isLoading && !isDataLoaded} />
+            <Header appVersion={settings.APP_VERSION || "4.2.0"} onSettingsClick={openSettingsModal} isLoading={isLoading && !isDataLoaded} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                 <NewAnalysis onAnalyze={handleAnalysis} isAnalyzing={isAnalyzing} symbol={analysisSymbol} setSymbol={setAnalysisSymbol} timeframe={analysisTimeframe} setTimeframe={setAnalysisTimeframe}/>
                 <ProactiveScanner onScan={handleRunScan} isScanning={isScanning} />
