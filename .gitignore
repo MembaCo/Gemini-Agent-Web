@@ -15,4 +15,3 @@ frontend/node_modules
 frontend/.env
 backend/trades.db
 data/trades.db
-hash_password.py
