@@ -1,5 +1,54 @@
-Değişiklik Günlüğü
+# Değişiklik Günlüğü
+
 Bu projede yapılan tüm önemli değişiklikler bu dosyada belgelenmektedir.
+
+---
+
+### [4.3.0] - 2025-06-30 - Arayüz ve Kullanıcı Deneyimi İyileştirmeleri
+
+Bu sürüm, kullanıcı deneyimini doğrudan etkileyen ve botun kontrolünü kolaylaştıran önemli arayüz geliştirmeleri içerir.
+
+🚀 **Eklendi (Added)**
+- **Proaktif Tarama Onay Penceresi:** Proaktif Tarama sonucunda bulunan ve `auto-confirm` ayarı kapalı olan fırsatlar artık arayüzde bir onay penceresinde listelenerek kullanıcıya sunuluyor. Kullanıcılar bu pencereden istedikleri fırsatları tek tıkla işleme dönüştürebilir.
+- **Kapsamlı Ayarlar Menüsü:** Proaktif Tarayıcı'nın ön filtreleme, zaman aralığı, kara/beyaz liste gibi tüm ayarları dahil olmak üzere, arka uçtaki bütün yapılandırma seçenekleri artık web arayüzündeki "Uygulama Ayarları" penceresinden yönetilebilir hale getirildi.
+
+🔄 **Değiştirildi (Changed)**
+- **Detaylı Tarama Geri Bildirimi:** Dashboard'daki "Taramayı Başlat" butonu, işlem bittiğinde artık "Tarama tamamlandı" demek yerine, kaç adayın tarandığı, kaçının ön filtreden geçtiği ve kaç fırsat bulunduğu gibi özet bilgileri içeren daha detaylı bir bildirim gösteriyor.
+
+---
+
+### [4.2.0] - 2025-06-30 - Tarayıcı Optimizasyonu ve Gelişmiş Loglama
+
+Bu sürüm, API kullanımını ve maliyetleri düşürmeye yönelik akıllı optimizasyonlar ve sistemin ne yaptığını daha şeffaf hale getiren loglama mekanizmaları üzerine odaklanmıştır.
+
+🚀 **Eklendi (Added)**
+- **Canlı Olay (Event) Loglaması:** Pozisyon açma/kapama, tarayıcı başlangıç/bitiş, hata durumları ve senkronizasyon gibi tüm kritik sistem olayları artık "Canlı Sistem Olayları" panelinde gösterilmek üzere veritabanına kaydediliyor.
+- **Akıllı Ön Filtreleme:** Proaktif Tarayıcı, artık tüm adayları AI'a göndermeden önce RSI ve ADX gibi temel teknik göstergelere göre bir ön eleme yaparak API kullanımını ve maliyetleri önemli ölçüde azaltıyor. Yapay zeka sadece "umut vadeden" adaylar için kullanılıyor.
+
+---
+
+### [4.1.0] - 2025-06-30 - Performans ve Stabilite İyileştirmeleri
+
+Bu sürüm, uygulamanın daha akıcı ve hatasız çalışmasını sağlamak için arka plandaki performans sorunlarını ve çeşitli kütüphane uyarılarını gidermeye odaklanmıştır.
+
+✅ **Düzeltildi (Fixed)**
+- **Zamanlayıcı (Scheduler) Gecikme Uyarısı:** Proaktif tarama gibi ağır işlemlerin ana olay döngüsünü kilitlemesi engellenerek `APScheduler`'ın görevleri her zaman zamanında çalıştırması sağlandı. Bu, uygulamanın genel performansını ve tepkiselliğini artırdı.
+- **`LangChainDeprecationWarning`:** `langchain` kütüphanesindeki eski fonksiyon çağrıları, modern `.invoke()` metodu ile değiştirilerek gelecekteki uyumluluk sorunları giderildi.
+- **`ccxt` `fetchOpenOrders` Hatası:** Yetim emir kontrolü (`check_for_orphaned_orders`) fonksiyonunun `ccxt` kütüphanesinde bir hataya neden olması, borsa bağlantısı ayarları güncellenerek giderildi.
+
+---
+
+### [4.0.0] - 2025-06-30 - Kritik Hata Giderme ve Backtest Motoru Revizyonu
+
+Bu sürüm, uygulamanın temelini oluşturan kritik hataları gidererek sistemi stabil bir platform haline getirmiştir.
+
+✅ **Düzeltildi (Fixed)**
+- **KRİTİK BAŞLANGIÇ HATASI (`ConnectionError`):** Uygulamanın başlamasına engel olan ve Python'un import mekanizmasından kaynaklanan temel bir hata giderildi. Artık tüm modüller borsa bağlantı nesnesine doğru şekilde erişiyor.
+- **KRİTİK "HAYALET POZİSYON" HATASI:** Borsada açık olan bir pozisyonun, uygulama tarafından yanlışlıkla "hayalet" olarak algılanıp veritabanından silinmesine neden olan `fetch_positions` çağrısındaki hata giderildi.
+- **KRİTİK BACKTEST HATASI (`KeyError`):** Backtest motorunun, anlık analiz için tasarlanmış fonksiyonları yanlış kullanarak çökmesine neden olan mantık hatası, backtester'a özel sinyal üretme mekanizması yazılarak tamamen giderildi.
+
+🔄 **Değiştirildi (Changed)**
+- **Backtest Sonuç Gösterimi:** Backtest sonuçlarının (istatistikler ve işlem listesi) arayüzde hatalı gösterilmesine neden olan veri yolu uyumsuzlukları düzeltildi.
 
 [3.3.0] - 2025-06-25 - Tarayıcı Performans Optimizasyonu
 Bu sürüm, interaktif fırsat tarayıcısının hem backend mantığını hem de frontend kullanıcı deneyimini önemli ölçüde iyileştirmeye odaklanmıştır.
