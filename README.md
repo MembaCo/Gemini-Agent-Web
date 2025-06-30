@@ -41,3 +41,10 @@ Bu uygulama, Docker ile kolayca kurulacak şekilde tasarlanmıştır. Başlamak 
 ```bash
 git clone [https://github.com/MembaCo/Gemini-Agent-Web.git](https://github.com/MembaCo/Gemini-Agent-Web.git)
 cd Gemini-Agent-Web
+
+**Ekran Görüntüleri**
+![Alt text](https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/refs/heads/main/main/assets/gallery-1.png)
+
+![Alt text](https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/refs/heads/main/main/assets/gallery-2.png)
+
+![Alt text](https://raw.githubusercontent.com/MembaCo/Gemini-Agent-Web/refs/heads/main/main/assets/gallery-3.png)
