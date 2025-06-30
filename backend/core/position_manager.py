@@ -9,32 +9,40 @@ from tools import (
     get_open_positions_from_exchange, get_atr_value, _get_unified_symbol,
     fetch_open_orders, cancel_all_open_orders
 )
+# DÜZELTME: 'exchange' nesnesi, fonksiyonların başında kontrol edilebilmesi için doğrudan import ediliyor.
+from tools.exchange import exchange
 from core.trader import close_existing_trade, TradeException
 from notifications import send_telegram_message, format_partial_tp_message
-from tools.exchange import exchange
+
+def _ensure_exchange_is_available():
+    """Yardımcı fonksiyon: Borsa bağlantısının varlığını kontrol eder."""
+    if not exchange:
+        logging.warning("İşlem yapılamadı: Borsa bağlantısı (exchange) mevcut değil.")
+        return False
+    return True
 
 def sync_positions_on_startup():
     """
     Uygulama başlangıcında çalışarak borsadaki açık pozisyonlarla yerel
     veritabanını senkronize eder. Yönetilmeyen pozisyonları içe aktarır.
     """
+    if not _ensure_exchange_is_available():
+        logging.error("Başlangıç senkronizasyonu atlanıyor: Borsa bağlantısı yok.")
+        return
+        
     logging.info(">>> Başlangıçta Pozisyon Senkronizasyonu Başlatılıyor...")
     try:
         exchange_positions_raw = get_open_positions_from_exchange()
         db_positions = database.get_all_positions()
-
-        # Karşılaştırma için sembol listelerini daha sağlam bir şekilde hazırla
         exchange_positions_map = {_get_unified_symbol(p['symbol']): p for p in exchange_positions_raw}
         db_symbols_set = {p['symbol'] for p in db_positions}
 
-        # Veritabanında olan ama borsada olmayanları bul (Hayalet Pozisyonlar)
         ghost_symbols = db_symbols_set - set(exchange_positions_map.keys())
         for symbol in ghost_symbols:
             logging.warning(f"Hayalet Pozisyon Bulundu: '{symbol}' veritabanında var ama borsada yok. Veritabanından kaldırılıyor...")
             database.remove_position(symbol)
             send_telegram_message(f"⚠️ **Senkronizasyon Uyarısı** ⚠️\n`{symbol}` pozisyonu veritabanında bulunuyordu ancak borsada kapalıydı. Veritabanı temizlendi.")
 
-        # Borsada olan ama veritabanında olmayanları bul ve İÇE AKTAR
         unmanaged_symbols = set(exchange_positions_map.keys()) - db_symbols_set
         for symbol_unified in unmanaged_symbols:
             pos_data = exchange_positions_map[symbol_unified]
@@ -84,6 +92,8 @@ async def check_all_managed_positions():
     Tüm yönetilen pozisyonları periyodik olarak kontrol eder.
     PNL durumunu hesaplar ve SL/TP, Trailing SL gibi stratejileri uygular.
     """
+    if not _ensure_exchange_is_available(): return
+
     app_config.load_config()
     logging.info("Aktif pozisyonlar kontrol ediliyor...")
     active_positions = database.get_all_positions()
@@ -125,7 +135,7 @@ async def check_all_managed_positions():
             logging.error(f"Pozisyon yönetimi sırasında beklenmedik hata ({position['symbol']}): {e}", exc_info=True)
 
 async def refresh_single_position_pnl(symbol: str):
-    """Tek bir pozisyonun PNL'ini hesaplar ve veritabanını günceller."""
+    if not _ensure_exchange_is_available(): return
     position = database.get_position_by_symbol(symbol)
     if not position: return
     current_price = _fetch_price_natively(position["symbol"])
@@ -143,7 +153,6 @@ async def refresh_single_position_pnl(symbol: str):
     database.update_position_pnl(position['symbol'], pnl, pnl_percentage)
 
 def handle_partial_tp(position: dict, current_price: float):
-    """Kısmi kâr alma mantığını yönetir."""
     initial_sl = position.get('initial_stop_loss')
     entry_price = position.get('entry_price')
     side = position.get("side")
@@ -166,7 +175,6 @@ def handle_partial_tp(position: dict, current_price: float):
                 logging.error(f"Kısmi kâr alma sırasında pozisyon kapatılamadı: {result.get('message')}")
 
 def handle_trailing_stop_loss(position: dict, current_price: float):
-    """İz süren zarar durdurma mantığını yönetir."""
     entry_price = position.get("entry_price", 0.0)
     initial_sl = position.get('initial_stop_loss')
     current_sl_price = position.get("stop_loss", 0.0)
@@ -191,6 +199,8 @@ async def check_for_orphaned_orders():
     Borsadaki açık emirleri kontrol eder. Bir pozisyonla ilişkili olmayan
     (örneğin pozisyon manuel kapatılmış ama emirler kalmış) emirleri iptal eder.
     """
+    if not _ensure_exchange_is_available(): return
+
     if not app_config.settings.get('LIVE_TRADING') or exchange.options.get('defaultType') != 'future':
         return
 
@@ -202,7 +212,6 @@ async def check_for_orphaned_orders():
             return
 
         exchange_positions = get_open_positions_from_exchange()
-        # İYİLEŞTİRME: Karşılaştırma için standartlaştırılmış sembol set'i oluşturulur.
         active_position_symbols = {_get_unified_symbol(p['symbol']) for p in exchange_positions}
 
         orphaned_orders_found = 0
@@ -211,9 +220,8 @@ async def check_for_orphaned_orders():
             if order_symbol not in active_position_symbols:
                 logging.warning(f"Yetim Emir Tespit Edildi: {order_symbol} sembolünde pozisyon kapalı ama {order['id']} ID'li emir açık. Emir iptal ediliyor.")
                 try:
-                    # Emir iptali için borsanın beklediği ham (raw) sembol kullanılır.
                     exchange.cancel_order(order['id'], order['symbol'])
-                    send_telegram_message(f"🧹 **Otomatik Temizlik** �\n`{order_symbol}` için pozisyon kapalı olmasına rağmen açık `{order['type']}` emri bulundu ve iptal edildi.")
+                    send_telegram_message(f"🧹 **Otomatik Temizlik** 🧹\n`{order_symbol}` için pozisyon kapalı olmasına rağmen açık `{order['type']}` emri bulundu ve iptal edildi.")
                     orphaned_orders_found += 1
                 except Exception as e:
                     logging.error(f"Yetim emir {order['id']} ({order_symbol}) iptal edilirken hata: {e}")

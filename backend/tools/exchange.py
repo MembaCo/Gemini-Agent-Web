@@ -10,10 +10,16 @@ import logging
 from dotenv import load_dotenv
 from langchain.tools import tool
 from tenacity import retry, stop_after_attempt, wait_exponential
+# YENİ: Eksik olan 'Path' import ifadesi eklendi.
+from pathlib import Path
 
 from .utils import _get_unified_symbol, _parse_symbol_timeframe_input, str_to_bool
 
-load_dotenv()
+# .env dosyasının yolunu, bu dosyanın bulunduğu konuma göre dinamik olarak belirle.
+dotenv_path = Path(__file__).resolve().parent.parent / '.env'
+logging.info(f".env dosyası şu konumda aranıyor: {dotenv_path}")
+load_dotenv(dotenv_path=dotenv_path)
+
 exchange = None
 indicator_cache = {}
 CACHE_TTL_SECONDS = 180
@@ -29,18 +35,17 @@ def initialize_exchange(market_type: str):
     if exchange:
         return
 
-    # --- YENİ DEBUG LOGLARI ---
     logging.info(">>> Borsa bağlantısı başlatılıyor...")
     use_testnet = str_to_bool(os.getenv("USE_TESTNET", "False"))
     api_key = os.getenv("BINANCE_API_KEY")
     secret_key = os.getenv("BINANCE_SECRET_KEY")
 
     if not api_key or not secret_key:
-        logging.critical("!!! KRİTİK HATA: BINANCE_API_KEY veya BINANCE_SECRET_KEY .env dosyasında bulunamadı veya boş. Lütfen backend/.env dosyasını kontrol edin.")
-        return
+        error_message = "!!! KRİTİK HATA: BINANCE_API_KEY veya BINANCE_SECRET_KEY .env dosyasında bulunamadı veya boş. Lütfen backend/.env dosyasını kontrol edin."
+        logging.critical(error_message)
+        raise ValueError(error_message)
 
     logging.info(f"API Anahtarları bulundu. Testnet Modu: {use_testnet}, Piyasa Tipi: {market_type}")
-    # --- DEBUG LOGLARI SONU ---
     
     config_data = {
         "apiKey": api_key, "secret": secret_key,
