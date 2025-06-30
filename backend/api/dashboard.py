@@ -8,6 +8,7 @@
 import logging
 from fastapi import APIRouter, HTTPException
 from datetime import datetime, timedelta
+from tools import get_wallet_balance # Bakiye fonksiyonu import edildi
 import pandas as pd
 import numpy as np
 
@@ -34,6 +35,14 @@ async def get_dashboard_data():
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
         avg_pnl = total_pnl / total_trades if total_trades > 0 else 0
         
+        balance_result = get_wallet_balance()
+        wallet_balance = 0.0
+        if balance_result.get("status") == "success":
+            wallet_balance = balance_result.get('balance', 0.0)
+        else:
+            # Bakiye alınamazsa logla ama hataya neden olma
+            logging.warning(f"Dashboard: Cüzdan bakiyesi alınamadı: {balance_result.get('message')}")
+
         # Ortalama pozisyon süresi
         total_holding_seconds = 0
         if total_trades > 0:
@@ -87,7 +96,8 @@ async def get_dashboard_data():
             "losing_trades": total_trades - winning_trades, "total_trades": total_trades,
             "active_model": active_model, "profit_factor": profit_factor,
             "max_drawdown": max_drawdown, "avg_pnl": avg_pnl,
-            "avg_holding_seconds": avg_holding_seconds
+            "avg_holding_seconds": avg_holding_seconds,
+            "wallet_balance": wallet_balance,
         }
 
         return {

@@ -12,6 +12,7 @@ from tools import get_open_positions_from_exchange, _get_unified_symbol, get_tec
 from core.trader import open_new_trade, close_existing_trade, TradeException
 from core.position_manager import refresh_single_position_pnl
 from core import agent as core_agent
+from tools import _fetch_price_natively
 
 router = APIRouter(
     prefix="/positions",
@@ -25,17 +26,42 @@ class PositionOpenRequest(BaseModel):
     timeframe: str
     price: float
 
-@router.get("/", summary="Tüm açık pozisyonları al")
+@router.get("/", summary="Tüm açık pozisyonları al (Anlık P&L ile)")
 async def get_all_positions():
     """
     Veritabanındaki tüm aktif yönetilen pozisyonları döndürür.
+    Her bir pozisyon için P&L, bu istek anında güncel fiyata göre yeniden hesaplanır.
     """
     try:
         managed_positions = database.get_all_positions()
+        
+        # Her pozisyon için P&L'i anlık olarak yeniden hesapla
+        for pos in managed_positions:
+            try:
+                current_price = _fetch_price_natively(pos["symbol"])
+                if current_price is not None:
+                    entry_price = pos.get('entry_price', 0)
+                    amount = pos.get('amount', 0)
+                    leverage = pos.get('leverage', 1)
+
+                    if entry_price > 0 and amount > 0:
+                        pnl = (current_price - entry_price) * amount if pos['side'] == 'buy' else (entry_price - current_price) * amount
+                        margin = (entry_price * amount) / leverage if leverage > 0 else 0
+                        pnl_percentage = (pnl / margin) * 100 if margin > 0 else 0
+                        
+                        # Pozisyon sözlüğündeki değerleri güncelle
+                        pos['pnl'] = pnl
+                        pos['pnl_percentage'] = pnl_percentage
+            except Exception as e:
+                # Tek bir pozisyonda hata olursa logla ama devam et
+                logging.warning(f"Anlık P&L hesaplanırken hata ({pos['symbol']}): {e}")
+
+
         return { "managed_positions": managed_positions, "unmanaged_positions": [] }
     except Exception as e:
         logging.error(f"Pozisyonlar alınırken hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Pozisyonlar alınırken bir sunucu hatası oluştu.")
+
 
 
 @router.post("/open", summary="Yeni bir ticaret pozisyonu aç")

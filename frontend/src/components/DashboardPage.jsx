@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Filler, Legend, ArcElement, BarElement } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { Settings, Search, Play, Loader2, Cpu, Terminal, Zap, Layers, BarChartHorizontal, ShieldX, RefreshCw, Bot, X, Save, HelpCircle } from 'lucide-react';
+import { Settings, Search, Play, Loader2, Cpu, Terminal, Zap, Layers, BarChartHorizontal, ShieldX, RefreshCw, Bot, X, Save, HelpCircle, Wallet } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import TradeHistory from './TradeHistory';
@@ -249,6 +249,7 @@ export const DashboardPage = () => {
                 <ProactiveScanner onScan={handleRunScan} isScanning={isScanning} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
+                <StatCard title="Güncel Bakiye"  isLoading={isLoading} value={`${(stats.wallet_balance || 0).toFixed(2)} USDT`} valueClassName="text-blue-400" icon={<Wallet size={20} className="text-gray-500" />} tooltip="Borsadaki toplam vadeli işlem cüzdanı bakiyesi."/>
                 <StatCard title="Toplam P&L" isLoading={isLoading} value={`${(stats.total_pnl || 0).toFixed(2)} USDT`} valueClassName={(stats.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'} />
                 <StatCard title="Kazanma Oranı" isLoading={isLoading} value={`${(stats.win_rate || 0).toFixed(2)}%`} />
                 <StatCard title="Kazanan / Kaybeden" isLoading={isLoading} value={`<span class="text-green-400">${stats.winning_trades || 0}</span> / <span class="text-red-400">${stats.losing_trades || 0}</span>`} />
