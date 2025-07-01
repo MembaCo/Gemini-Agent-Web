@@ -48,16 +48,15 @@ async def lifespan(app: FastAPI):
             
     except Exception as e:
         logging.critical(f"--- KRİTİK BAŞLANGIÇ HATASI --- Borsa bağlantısı kurulamadı: {e}", exc_info=True)
-        # YENİ: Başlangıç hatasını veritabanına kaydet
         database.log_event("CRITICAL", "Application", f"Uygulama başlatılamadı: Borsa bağlantı hatası - {e}")
         raise e
 
     agent.initialize_agent()
     
     try:
-        # YENİ: Senkronizasyon başlangıcını logla
         database.log_event("INFO", "Sync", "Başlangıçta pozisyon senkronizasyonu başlatıldı.")
-        position_manager.sync_positions_on_startup()
+        # Fonksiyon adı güncellendi
+        await position_manager.sync_positions_with_exchange()
     except Exception as e:
         error_msg = f"Başlangıçta pozisyon senkronizasyonu başarısız oldu: {e}"
         logging.critical(error_msg)
@@ -73,6 +72,10 @@ async def lifespan(app: FastAPI):
         database.log_event("INFO", "Telegram", "Telegram botu başarıyla başlatıldı.")
     
     logging.info("Arka plan görevleri (Scheduler) ayarlanıyor...")
+    # --- YENİ PERİYODİK GÖREV ---
+    # Periyodik pozisyon senkronizasyon görevi eklendi.
+    scheduler.add_job(position_manager.sync_positions_with_exchange, "interval", seconds=app_config.settings.get('POSITION_SYNC_INTERVAL_SECONDS', 300), id="position_sync_job", max_instances=1)
+    # --- YENİ GÖREV SONU ---
     scheduler.add_job(position_manager.check_all_managed_positions, "interval", seconds=app_config.settings.get('POSITION_CHECK_INTERVAL_SECONDS', 60), id="position_checker_job", max_instances=1)
     scheduler.add_job(position_manager.check_for_orphaned_orders, "interval", seconds=app_config.settings.get('ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 300), id="orphan_order_job", max_instances=1)
     if app_config.settings.get('PROACTIVE_SCAN_ENABLED'):
@@ -80,11 +83,9 @@ async def lifespan(app: FastAPI):
     
     scheduler.start()
     logging.info("Uygulama başlangıcı tamamlandı. API kullanıma hazır.")
-    # YENİ: Başarılı başlangıcı veritabanına kaydet
     database.log_event("SUCCESS", "Application", "Uygulama başarıyla başlatıldı ve çalışıyor.")
     yield
     
-    # YENİ: Kapanış olayını veritabanına kaydet
     logging.info("Uygulama kapatılıyor (lifespan)...")
     database.log_event("INFO", "Application", "Uygulama kapatılıyor...")
     if hasattr(app.state, "telegram_app") and app.state.telegram_app and hasattr(app.state.telegram_app, 'updater') and app.state.telegram_app.updater.running:
@@ -96,7 +97,7 @@ async def lifespan(app: FastAPI):
     logging.info("Arka plan görevleri (Scheduler) kapatıldı.")
 
 
-app = FastAPI(title="Gemini Trading Agent API", version="4.1.0", lifespan=lifespan)
+app = FastAPI(title="Gemini Trading Agent API", version="4.3.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 api_router = APIRouter(prefix="/api")

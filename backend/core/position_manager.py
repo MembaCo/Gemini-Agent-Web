@@ -2,6 +2,7 @@
 # @author: Memba Co.
 
 import logging
+import asyncio
 import database
 from core import app_config
 from tools import (
@@ -20,124 +21,173 @@ def _ensure_exchange_is_available():
         return False
     return True
 
-def sync_positions_on_startup():
+async def sync_positions_with_exchange():
     """
-    Uygulama başlangıcında çalışarak borsadaki açık pozisyonlarla yerel
-    veritabanını senkronize eder. Yönetilmeyen pozisyonları içe aktarır.
+    Uygulama başlangıcında ve periyodik olarak çalışarak borsadaki açık pozisyonlarla yerel
+    veritabanını senkronize eder. Bu fonksiyon bloklayıcı olabileceğinden thread'de çalıştırılır.
     """
-    if not _ensure_exchange_is_available():
-        logging.error("Başlangıç senkronizasyonu atlanıyor: Borsa bağlantısı yok.")
-        return
+    def _blocking_sync():
+        if not _ensure_exchange_is_available():
+            logging.error("Periyodik senkronizasyon atlanıyor: Borsa bağlantısı yok.")
+            return
         
-    logging.info(">>> Başlangıçta Pozisyon Senkronizasyonu Başlatılıyor...")
-    try:
-        exchange_positions_raw = get_open_positions_from_exchange()
-        db_positions = database.get_all_positions()
-        exchange_positions_map = {_get_unified_symbol(p['symbol']): p for p in exchange_positions_raw}
-        db_symbols_set = {p['symbol'] for p in db_positions}
+        logging.info(">>> Pozisyon Senkronizasyonu Başlatılıyor...")
+        try:
+            exchange_positions_raw = get_open_positions_from_exchange()
+            db_positions = database.get_all_positions()
+            exchange_positions_map = {_get_unified_symbol(p['symbol']): p for p in exchange_positions_raw}
+            db_symbols_set = {p['symbol'] for p in db_positions}
 
-        ghost_symbols = db_symbols_set - set(exchange_positions_map.keys())
-        for symbol in ghost_symbols:
-            logging.warning(f"Hayalet Pozisyon Bulundu: '{symbol}' veritabanında var ama borsada yok. Veritabanından kaldırılıyor...")
-            database.remove_position(symbol)
-            database.log_event("WARNING", "Sync", f"Hayalet pozisyon bulundu ve silindi: '{symbol}' veritabanında vardı ama borsada yoktu.")
-            send_telegram_message(f"⚠️ **Senkronizasyon Uyarısı** ⚠️\n`{symbol}` pozisyonu veritabanında bulunuyordu ancak borsada kapalıydı. Veritabanı temizlendi.")
+            # Veritabanında var, borsada yok (Hayalet Pozisyon)
+            ghost_symbols = db_symbols_set - set(exchange_positions_map.keys())
+            for symbol in ghost_symbols:
+                logging.warning(f"Hayalet Pozisyon Bulundu: '{symbol}' veritabanında var ama borsada yok. Veritabanından kaldırılıyor...")
+                database.remove_position(symbol)
+                database.log_event("WARNING", "Sync", f"Hayalet pozisyon bulundu ve silindi: '{symbol}' veritabanında vardı ama borsada yoktu.")
+                send_telegram_message(f"⚠️ **Senkronizasyon Uyarısı** ⚠️\n`{symbol}` pozisyonu veritabanında bulunuyordu ancak borsada kapalıydı. Veritabanı temizlendi.")
 
-        unmanaged_symbols = set(exchange_positions_map.keys()) - db_symbols_set
-        for symbol_unified in unmanaged_symbols:
-            pos_data = exchange_positions_map[symbol_unified]
-            try:
-                entry_price_raw = pos_data.get('entryPrice')
-                amount_raw = pos_data.get('contracts')
-                leverage_raw = pos_data.get('leverage')
-                entry_price = float(entry_price_raw) if entry_price_raw is not None else 0.0
-                amount = float(amount_raw) if amount_raw is not None else 0.0
-                leverage = float(leverage_raw) if leverage_raw is not None else 1.0
+            # Borsada var, veritabanında yok (Yönetilmeyen Pozisyon)
+            unmanaged_symbols = set(exchange_positions_map.keys()) - db_symbols_set
+            for symbol_unified in unmanaged_symbols:
+                pos_data = exchange_positions_map[symbol_unified]
+                try:
+                    entry_price_raw = pos_data.get('entryPrice')
+                    amount_raw = pos_data.get('contracts')
+                    leverage_raw = pos_data.get('leverage')
+                    entry_price = float(entry_price_raw) if entry_price_raw is not None else 0.0
+                    amount = float(amount_raw) if amount_raw is not None else 0.0
+                    leverage = float(leverage_raw) if leverage_raw is not None else 1.0
 
-                if entry_price == 0.0 or amount == 0.0:
-                    logging.error(f"'{symbol_unified}' pozisyonu için giriş fiyatı veya miktar alınamadı, içe aktarılamıyor.")
-                    continue
-                
-                logging.info(f"Yönetilmeyen Pozisyon Bulundu: '{symbol_unified}'. Sisteme entegre ediliyor...")
-                side = 'buy' if pos_data.get('side') == 'long' else 'sell'
-                timeframe = '15m'
-                atr_result = get_atr_value(f"{symbol_unified},{timeframe}")
-                if atr_result.get("status") != "success":
-                    logging.error(f"'{symbol_unified}' için ATR alınamadı, içe aktarılamıyor. Mesaj: {atr_result.get('message')}")
-                    continue
-                
-                atr_value = atr_result['value']
-                sl_distance = atr_value * app_config.settings['ATR_MULTIPLIER_SL']
-                tp_distance = sl_distance * app_config.settings['RISK_REWARD_RATIO_TP']
-                stop_loss_price = entry_price - sl_distance if side == "buy" else entry_price + sl_distance
-                take_profit_price = entry_price + tp_distance if side == "buy" else entry_price - tp_distance
+                    if entry_price == 0.0 or amount == 0.0:
+                        logging.error(f"'{symbol_unified}' pozisyonu için giriş fiyatı veya miktar alınamadı, içe aktarılamıyor.")
+                        continue
+                    
+                    logging.info(f"Yönetilmeyen Pozisyon Bulundu: '{symbol_unified}'. Sisteme entegre ediliyor...")
+                    side = 'buy' if pos_data.get('side') == 'long' else 'sell'
+                    timeframe = '15m' # Varsayılan olarak
+                    atr_result = get_atr_value(f"{symbol_unified},{timeframe}")
+                    if atr_result.get("status") != "success":
+                        logging.error(f"'{symbol_unified}' için ATR alınamadı, içe aktarılamıyor. Mesaj: {atr_result.get('message')}")
+                        continue
+                    
+                    atr_value = atr_result['value']
+                    sl_distance = atr_value * app_config.settings['ATR_MULTIPLIER_SL']
+                    tp_distance = sl_distance * app_config.settings['RISK_REWARD_RATIO_TP']
+                    stop_loss_price = entry_price - sl_distance if side == "buy" else entry_price + sl_distance
+                    take_profit_price = entry_price + tp_distance if side == "buy" else entry_price - tp_distance
 
-                position_to_add = {"symbol": symbol_unified, "side": side, "amount": amount, "entry_price": entry_price, "timeframe": timeframe, "leverage": leverage, "stop_loss": stop_loss_price, "take_profit": take_profit_price}
-                database.add_position(position_to_add)
-                database.log_event("INFO", "Sync", f"Yönetilmeyen pozisyon '{symbol_unified}' sisteme aktarıldı.")
-                logging.info(f"✅ BAŞARILI: '{symbol_unified}' pozisyonu içe aktarıldı ve yönetime alındı.")
-                send_telegram_message(f"✅ **Pozisyon İçe Aktarıldı** ✅\n`{symbol_unified}` pozisyonu borsada açık bulunduğu için yönetime alındı.")
-            except Exception as import_e:
-                logging.error(f"'{symbol_unified}' pozisyonu içe aktarılırken hata: {import_e}", exc_info=True)
+                    position_to_add = {"symbol": symbol_unified, "side": side, "amount": amount, "entry_price": entry_price, "timeframe": timeframe, "leverage": leverage, "stop_loss": stop_loss_price, "take_profit": take_profit_price}
+                    database.add_position(position_to_add)
+                    database.log_event("INFO", "Sync", f"Yönetilmeyen pozisyon '{symbol_unified}' sisteme aktarıldı.")
+                    logging.info(f"✅ BAŞARILI: '{symbol_unified}' pozisyonu içe aktarıldı ve yönetime alındı.")
+                    send_telegram_message(f"✅ **Pozisyon İçe Aktarıldı** ✅\n`{symbol_unified}` pozisyonu borsada açık bulunduğu için yönetime alındı.")
+                except Exception as import_e:
+                    logging.error(f"'{symbol_unified}' pozisyonu içe aktarılırken hata: {import_e}", exc_info=True)
 
-        total_synced = len(ghost_symbols) + len(unmanaged_symbols)
-        if total_synced > 0:
-            msg = f"Pozisyon senkronizasyonu tamamlandı. {len(ghost_symbols)} hayalet pozisyon temizlendi, {len(unmanaged_symbols)} pozisyon içe aktarıldı/denendi."
-            logging.info(f"<<< {msg}")
-            database.log_event("INFO", "Sync", msg)
-        else:
-            logging.info("<<< Tüm pozisyonlar senkronize. Herhangi bir tutarsızlık bulunamadı.")
-    except Exception as e:
-        logging.error(f"Başlangıçta pozisyon senkronizasyonu sırasında kritik hata: {e}", exc_info=True)
+            if not ghost_symbols and not unmanaged_symbols:
+                logging.info("<<< Pozisyonlar senkronize. Herhangi bir tutarsızlık bulunamadı.")
+            
+        except Exception as e:
+            logging.error(f"Pozisyon senkronizasyonu sırasında kritik hata: {e}", exc_info=True)
+
+    await asyncio.to_thread(_blocking_sync)
 
 async def check_all_managed_positions():
     """
-    Tüm yönetilen pozisyonları periyodik olarak kontrol eder.
-    PNL durumunu hesaplar ve SL/TP, Trailing SL gibi stratejileri uygular.
+    Tüm yönetilen pozisyonları periyodik olarak kontrol eder. Bloklamayı önlemek için
+    ana mantık bir thread içinde çalıştırılır.
     """
-    if not _ensure_exchange_is_available(): return
+    def _blocking_check():
+        if not _ensure_exchange_is_available(): return
 
-    app_config.load_config()
-    logging.info("Aktif pozisyonlar kontrol ediliyor...")
-    active_positions = database.get_all_positions()
-    
-    for position in active_positions:
+        app_config.load_config()
+        logging.info("Aktif pozisyonlar kontrol ediliyor...")
+        active_positions = database.get_all_positions()
+        
+        for position in active_positions:
+            try:
+                current_price = _fetch_price_natively(position["symbol"])
+                if current_price is None:
+                    logging.warning(f"Fiyat alınamadığı için {position['symbol']} pozisyonu kontrol edilemedi.")
+                    continue
+
+                # PNL hesaplaması ve veritabanı güncellemesi
+                pnl, pnl_percentage = 0, 0
+                entry_price = position.get('entry_price', 0); amount = position.get('amount', 0); leverage = position.get('leverage', 1)
+                if entry_price > 0 and amount > 0:
+                    pnl = (current_price - entry_price) * amount if position['side'] == 'buy' else (entry_price - current_price) * amount
+                    margin = (entry_price * amount) / leverage if leverage > 0 else 0
+                    pnl_percentage = (pnl / margin) * 100 if margin > 0 else 0
+                database.update_position_pnl(position['symbol'], pnl, pnl_percentage)
+                
+                # SL/TP kontrolü
+                side = position.get("side"); sl_price = position.get("stop_loss", 0.0); tp_price = position.get("take_profit", 0.0)
+                close_reason = None
+                if sl_price > 0 and ((side == "buy" and current_price <= sl_price) or (side == "sell" and current_price >= sl_price)): close_reason = "SL"
+                elif tp_price > 0 and ((side == "buy" and current_price >= tp_price) or (side == "sell" and current_price <= tp_price)): close_reason = "TP"
+                
+                if close_reason:
+                    logging.info(f"[AUTO-CLOSE] Pozisyon hedefe ulaştı ({close_reason}): {position['symbol']} @ {current_price}")
+                    close_existing_trade(position['symbol'], close_reason=close_reason)
+                    continue
+
+                # Gelişmiş stratejiler
+                if app_config.settings.get('USE_PARTIAL_TP') and not position.get('partial_tp_executed'):
+                    handle_partial_tp(position, current_price)
+                if app_config.settings.get('USE_TRAILING_STOP_LOSS'):
+                    handle_trailing_stop_loss(position, current_price)
+            except TradeException as te:
+                logging.error(f"Pozisyon yönetimi sırasında bilinen hata ({position['symbol']}): {te}")
+            except Exception as e:
+                logging.error(f"Pozisyon yönetimi sırasında beklenmedik hata ({position['symbol']}): {e}", exc_info=True)
+
+    await asyncio.to_thread(_blocking_check)
+
+async def check_for_orphaned_orders():
+    """
+    Borsadaki açık emirleri kontrol eder ve pozisyonu olmayanları iptal eder.
+    Bloklamayı önlemek için ana mantık bir thread içinde çalıştırılır.
+    """
+    def _blocking_check():
+        if not _ensure_exchange_is_available(): return
+        if not app_config.settings.get('LIVE_TRADING') or exchange_tools.exchange.options.get('defaultType') != 'future':
+            return
+
+        logging.info("Yetim Emir Kontrolü (Orphan Order Check) başlatılıyor...")
         try:
-            await refresh_single_position_pnl(position['symbol'])
-            updated_position = database.get_position_by_symbol(position['symbol'])
-            if not updated_position: continue
+            open_orders = fetch_open_orders()
+            if not open_orders:
+                logging.info("Yetim Emir Kontrolü: Kontrol edilecek açık emir bulunamadı.")
+                return
 
-            current_price = _fetch_price_natively(updated_position["symbol"])
-            if current_price is None:
-                logging.warning(f"Fiyat alınamadığı için {updated_position['symbol']} pozisyonu kontrol edilemedi.")
-                continue
-
-            side = updated_position.get("side")
-            sl_price = updated_position.get("stop_loss", 0.0)
-            tp_price = updated_position.get("take_profit", 0.0)
+            exchange_positions = get_open_positions_from_exchange()
+            active_position_symbols = {_get_unified_symbol(p['symbol']) for p in exchange_positions}
+            orphaned_orders_found = 0
+            for order in open_orders:
+                order_symbol = _get_unified_symbol(order['symbol'])
+                if order_symbol not in active_position_symbols:
+                    logging.warning(f"Yetim Emir Tespit Edildi: {order_symbol} sembolünde pozisyon kapalı ama {order['id']} ID'li emir açık. Emir iptal ediliyor.")
+                    try:
+                        exchange_tools.exchange.cancel_order(order['id'], order['symbol'])
+                        database.log_event("INFO", "Sync", f"Yetim emir temizlendi: {order_symbol} pozisyonu kapalı olmasına rağmen açık bir emir bulundu ve iptal edildi.")
+                        send_telegram_message(f"🧹 **Otomatik Temizlik** 🧹\n`{order_symbol}` için pozisyon kapalı olmasına rağmen açık `{order['type']}` emri bulundu ve iptal edildi.")
+                        orphaned_orders_found += 1
+                    except Exception as e:
+                        logging.error(f"Yetim emir {order['id']} ({order_symbol}) iptal edilirken hata: {e}")
             
-            close_reason = None
-            if sl_price > 0 and ((side == "buy" and current_price <= sl_price) or (side == "sell" and current_price >= sl_price)):
-                close_reason = "SL"
-            elif tp_price > 0 and ((side == "buy" and current_price >= tp_price) or (side == "sell" and current_price <= tp_price)):
-                close_reason = "TP"
-            
-            if close_reason:
-                logging.info(f"[AUTO-CLOSE] Pozisyon hedefe ulaştı ({close_reason}): {updated_position['symbol']} @ {current_price}")
-                close_existing_trade(updated_position['symbol'], close_reason=close_reason)
-                continue
-
-            if app_config.settings.get('USE_PARTIAL_TP') and not updated_position.get('partial_tp_executed'):
-                handle_partial_tp(updated_position, current_price)
-
-            if app_config.settings.get('USE_TRAILING_STOP_LOSS'):
-                handle_trailing_stop_loss(updated_position, current_price)
-        except TradeException as te:
-            logging.error(f"Pozisyon yönetimi sırasında bilinen hata ({position['symbol']}): {te}")
+            if orphaned_orders_found > 0:
+                logging.info(f"Yetim Emir Kontrolü tamamlandı. {orphaned_orders_found} adet yetim emir temizlendi.")
+            else:
+                 logging.info("Yetim Emir Kontrolü tamamlandı. Herhangi bir yetim emir bulunamadı.")
         except Exception as e:
-            logging.error(f"Pozisyon yönetimi sırasında beklenmedik hata ({position['symbol']}): {e}", exc_info=True)
+            logging.error(f"Yetim emir kontrolü sırasında kritik hata: {e}", exc_info=True)
+
+    await asyncio.to_thread(_blocking_check)
+
 
 async def refresh_single_position_pnl(symbol: str):
+    # Bu fonksiyon genellikle UI'dan tetiklenir ve zaten asenkron bir endpoint içindedir.
+    # Bu nedenle _blocking_check gibi bir patterne şu an için gerek yoktur.
     if not _ensure_exchange_is_available(): return
     position = database.get_position_by_symbol(symbol)
     if not position: return
@@ -154,6 +204,7 @@ async def refresh_single_position_pnl(symbol: str):
         margin = (entry_price * amount) / leverage if leverage > 0 else 0
         pnl_percentage = (pnl / margin) * 100 if margin > 0 else 0
     database.update_position_pnl(position['symbol'], pnl, pnl_percentage)
+
 
 def handle_partial_tp(position: dict, current_price: float):
     initial_sl = position.get('initial_stop_loss')
@@ -202,44 +253,3 @@ def handle_trailing_stop_loss(position: dict, current_price: float):
                 database.update_position_sl(position['symbol'], new_sl)
                 log_message = f"İz Süren SL güncellendi: {position['symbol']} için yeni SL: {new_sl:.4f} USDT."
                 database.log_event("INFO", "Strategy", log_message)
-
-async def check_for_orphaned_orders():
-    """
-    Borsadaki açık emirleri kontrol eder. Bir pozisyonla ilişkili olmayan
-    (örneğin pozisyon manuel kapatılmış ama emirler kalmış) emirleri iptal eder.
-    """
-    if not _ensure_exchange_is_available(): return
-
-    if not app_config.settings.get('LIVE_TRADING') or exchange_tools.exchange.options.get('defaultType') != 'future':
-        return
-
-    logging.info("Yetim Emir Kontrolü (Orphan Order Check) başlatılıyor...")
-    try:
-        open_orders = fetch_open_orders()
-        if not open_orders:
-            logging.info("Kontrol edilecek açık emir bulunamadı.")
-            return
-
-        exchange_positions = get_open_positions_from_exchange()
-        active_position_symbols = {_get_unified_symbol(p['symbol']) for p in exchange_positions}
-
-        orphaned_orders_found = 0
-        for order in open_orders:
-            order_symbol = _get_unified_symbol(order['symbol'])
-            if order_symbol not in active_position_symbols:
-                logging.warning(f"Yetim Emir Tespit Edildi: {order_symbol} sembolünde pozisyon kapalı ama {order['id']} ID'li emir açık. Emir iptal ediliyor.")
-                try:
-                    exchange_tools.exchange.cancel_order(order['id'], order['symbol'])
-                    log_message = f"Yetim emir temizlendi: {order_symbol} pozisyonu kapalı olmasına rağmen açık bir emir bulundu ve iptal edildi."
-                    database.log_event("INFO", "Sync", log_message)
-                    send_telegram_message(f"🧹 **Otomatik Temizlik** 🧹\n`{order_symbol}` için pozisyon kapalı olmasına rağmen açık `{order['type']}` emri bulundu ve iptal edildi.")
-                    orphaned_orders_found += 1
-                except Exception as e:
-                    logging.error(f"Yetim emir {order['id']} ({order_symbol}) iptal edilirken hata: {e}")
-        
-        if orphaned_orders_found > 0:
-            logging.info(f"Yetim Emir Kontrolü tamamlandı. {orphaned_orders_found} adet yetim emir temizlendi.")
-        else:
-            logging.info("Yetim Emir Kontrolü tamamlandı. Herhangi bir yetim emir bulunamadı.")
-    except Exception as e:
-        logging.error(f"Yetim emir kontrolü sırasında kritik hata: {e}", exc_info=True)

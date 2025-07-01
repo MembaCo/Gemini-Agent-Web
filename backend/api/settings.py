@@ -35,7 +35,8 @@ class SettingsUpdate(BaseModel):
     PARTIAL_TP_TARGET_RR: Optional[float] = None
     PARTIAL_TP_CLOSE_PERCENT: Optional[float] = None
     POSITION_CHECK_INTERVAL_SECONDS: Optional[int] = None
-    ORPHAN_ORDER_CHECK_INTERVAL_SECONDS: Optional[int] = None # YENİ
+    ORPHAN_ORDER_CHECK_INTERVAL_SECONDS: Optional[int] = None
+    POSITION_SYNC_INTERVAL_SECONDS: Optional[int] = None # YENİ
     PROACTIVE_SCAN_ENABLED: Optional[bool] = None
     PROACTIVE_SCAN_INTERVAL_SECONDS: Optional[int] = None
     PROACTIVE_SCAN_AUTO_CONFIRM: Optional[bool] = None
@@ -53,7 +54,6 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_VOLUME_TIMEFRAME: Optional[str] = None
     PROACTIVE_SCAN_VOLUME_MULTIPLIER: Optional[float] = None
     PROACTIVE_SCAN_VOLUME_PERIOD: Optional[int] = None
-     # YENİ: Ön filtreleme ayarlarını API'ye ekliyoruz.
     PROACTIVE_SCAN_PREFILTER_ENABLED: Optional[bool] = None
     PROACTIVE_SCAN_RSI_LOWER: Optional[int] = None
     PROACTIVE_SCAN_RSI_UPPER: Optional[int] = None
@@ -74,7 +74,6 @@ def reschedule_jobs(scheduler, new_settings: dict):
             )
             logging.info(f"Pozisyon kontrol görevi yeni interval ile yeniden zamanlandı: {new_settings['POSITION_CHECK_INTERVAL_SECONDS']} saniye.")
 
-        # YENİ: Yetim emir kontrol görevinin zamanlamasını güncelle
         if 'ORPHAN_ORDER_CHECK_INTERVAL_SECONDS' in new_settings:
             scheduler.reschedule_job(
                 "orphan_order_job",
@@ -82,6 +81,15 @@ def reschedule_jobs(scheduler, new_settings: dict):
                 seconds=new_settings['ORPHAN_ORDER_CHECK_INTERVAL_SECONDS']
             )
             logging.info(f"Yetim emir kontrol görevi yeni interval ile yeniden zamanlandı: {new_settings['ORPHAN_ORDER_CHECK_INTERVAL_SECONDS']} saniye.")
+
+        # YENİ: Pozisyon senkronizasyon görevinin zamanlamasını güncelle
+        if 'POSITION_SYNC_INTERVAL_SECONDS' in new_settings:
+            scheduler.reschedule_job(
+                "position_sync_job",
+                trigger="interval",
+                seconds=new_settings['POSITION_SYNC_INTERVAL_SECONDS']
+            )
+            logging.info(f"Pozisyon senkronizasyon görevi yeni interval ile yeniden zamanlandı: {new_settings['POSITION_SYNC_INTERVAL_SECONDS']} saniye.")
 
         if 'PROACTIVE_SCAN_ENABLED' in new_settings or 'PROACTIVE_SCAN_INTERVAL_SECONDS' in new_settings:
             scanner_job = scheduler.get_job("scanner_job")
