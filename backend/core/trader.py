@@ -16,6 +16,14 @@ class TradeException(Exception):
 
 def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_price: float):
     logging.info(f"Ticaret mantığı başlatıldı: {symbol} için yeni pozisyon açılıyor.")
+
+    # --- HATA DÜZELTMESİ (YENİ KOD) ---
+    # Yeni bir pozisyon açmadan önce, bu sembol için zaten açık bir pozisyon olup olmadığını kontrol et.
+    # Bu, 'UNIQUE constraint failed' veritabanı hatasını önler.
+    if database.get_position_by_symbol(symbol):
+        raise TradeException(f"'{symbol}' için zaten açık bir pozisyon mevcut. Yeni pozisyon açılamaz.")
+    # --- DÜZELTME SONU ---
+    
     if len(database.get_all_positions()) >= app_config.settings['MAX_CONCURRENT_TRADES']:
         raise TradeException("Maksimum eşzamanlı pozisyon limitine ulaşıldı.")
     
