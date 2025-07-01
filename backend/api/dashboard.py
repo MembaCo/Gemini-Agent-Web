@@ -27,7 +27,16 @@ async def get_dashboard_data():
         # --- Gelişmiş İstatistikler ---
         gross_profit = sum(t['pnl'] for t in trade_history if t['pnl'] > 0)
         gross_loss = abs(sum(t['pnl'] for t in trade_history if t['pnl'] < 0))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
+        # --- DÜZELTME BAŞLANGICI ---
+        # HATA: float('inf') JSON uyumlu değildir ve sunucunun çökmesine neden olur.
+        # ÇÖZÜM: Sonsuzluk durumu, JSON'da 'null' olarak temsil edilebilecek 'None' ile değiştirildi.
+        if gross_loss > 0:
+            profit_factor = gross_profit / gross_loss
+        else:
+            # Kaybeden işlem yoksa, kâr faktörü tanımsızdır (veya sonsuz).
+            # JSON uyumluluğu için None (null) olarak ayarlıyoruz.
+            profit_factor = None
+        # --- DÜZELTME SONU ---
         
         total_pnl = gross_profit - gross_loss
         total_trades = len(trade_history)
