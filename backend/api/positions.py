@@ -27,30 +27,41 @@ class PositionOpenRequest(BaseModel):
     timeframe: str
     price: float
 
-@router.get("/", summary="Tüm açık pozisyonları al (Anlık P&L ile)")
+@router.get("/", summary="Tüm açık pozisyonları al (Anlık P&L ve Fiyat ile)")
 async def get_all_positions():
     """
     Veritabanındaki tüm aktif yönetilen pozisyonları döndürür.
-    Her bir pozisyon için P&L, bu istek anında güncel fiyata göre yeniden hesaplanır.
+    Her bir pozisyon için P&L ve anlık fiyat bu istek anında yeniden hesaplanır.
     """
     try:
         managed_positions = database.get_all_positions()
+        updated_positions = []
+
         for pos in managed_positions:
+            pos_dict = dict(pos)
             try:
-                current_price = await asyncio.to_thread(_fetch_price_natively, pos["symbol"])
+                current_price = await asyncio.to_thread(_fetch_price_natively, pos_dict["symbol"])
                 if current_price is not None:
-                    entry_price = pos.get('entry_price', 0)
-                    amount = pos.get('amount', 0)
-                    leverage = pos.get('leverage', 1)
+                    # Risk göstergesi için anlık fiyatı front-end'e gönder
+                    pos_dict['current_price'] = current_price
+
+                    entry_price = pos_dict.get('entry_price', 0)
+                    amount = pos_dict.get('amount', 0)
+                    leverage = pos_dict.get('leverage', 1)
+
                     if entry_price > 0 and amount > 0:
-                        pnl = (current_price - entry_price) * amount if pos['side'] == 'buy' else (entry_price - current_price) * amount
+                        pnl = (current_price - entry_price) * amount if pos_dict['side'] == 'buy' else (entry_price - current_price) * amount
                         margin = (entry_price * amount) / leverage if leverage > 0 else 0
                         pnl_percentage = (pnl / margin) * 100 if margin > 0 else 0
-                        pos['pnl'] = pnl
-                        pos['pnl_percentage'] = pnl_percentage
+                        pos_dict['pnl'] = pnl
+                        pos_dict['pnl_percentage'] = pnl_percentage
+                
+                updated_positions.append(pos_dict)
             except Exception as e:
-                logging.warning(f"Anlık P&L hesaplanırken hata ({pos['symbol']}): {e}")
-        return { "managed_positions": managed_positions, "unmanaged_positions": [] }
+                logging.warning(f"Anlık P&L hesaplanırken hata ({pos_dict['symbol']}): {e}")
+                updated_positions.append(pos_dict) # Hata durumunda bile orijinal veriyi ekle
+
+        return { "managed_positions": updated_positions, "unmanaged_positions": [] }
     except Exception as e:
         logging.error(f"Pozisyonlar alınırken hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Pozisyonlar alınırken bir sunucu hatası oluştu.")
@@ -98,7 +109,6 @@ async def refresh_pnl(symbol: str):
 async def reanalyze_position(symbol: str):
     decoded_symbol = unquote(symbol)
     unified_symbol = _get_unified_symbol(decoded_symbol)
-    logging.info(f"API: Pozisyon yeniden analiz isteği alındı: {unified_symbol}")
     position_to_manage = database.get_position_by_symbol(unified_symbol)
     if not position_to_manage:
         raise HTTPException(status_code=404, detail=f"Yönetilen pozisyon bulunamadı: {unified_symbol}")
@@ -115,7 +125,7 @@ async def reanalyze_position(symbol: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pozisyon yeniden analiz edilirken hata: {e}")
 
-# --- YENİ TOPLU İŞLEM ENDPOINT'LERİ ---
+# --- TOPLU İŞLEM ENDPOINT'LERİ ---
 
 @router.post("/close-all", summary="Tüm açık pozisyonları kapat")
 async def close_all_positions_endpoint(background_tasks: BackgroundTasks):
