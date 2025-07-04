@@ -140,34 +140,35 @@ def create_bailout_reanalysis_prompt(position: dict, current_price: float, pnl_p
     ```
     """
 
-def create_reanalysis_prompt(position: dict) -> str:
-    """Mevcut bir pozisyonu yeniden değerlendirmek için prompt oluşturur."""
-    # Bu fonksiyon, LangChain Agent'ından bağımsız olduğu için LangChain araçlarını çağırmaz.
-    # Bu nedenle, `get_technical_indicators` gibi araçları doğrudan çağırmaz.
-    # Bunun yerine, LangChain'in `llm.invoke` metodu ile kullanılacak bir metin istemi oluşturur.
+def create_reanalysis_prompt(position: dict, current_price: float, indicators: dict) -> str:
+    """Mevcut bir pozisyonu, GÜNCEL piyasa verileriyle yeniden değerlendirmek için prompt oluşturur."""
     symbol = position.get("symbol")
     timeframe = position.get("timeframe")
     side = position.get("side", "").upper()
     entry_price = position.get("entry_price")
     
-    # Not: Bu prompt, AI'nın daha iyi bir karar vermesi için gerekli teknik verileri
-    # içermelidir. Ancak, bu fonksiyonun kendisi bu verileri çekmez. Verilerin
-    # bu fonksiyonu çağıran yer (örn. api/positions.py) tarafından sağlanması ve
-    # prompt'a eklenmesi daha modüler bir yaklaşım olurdu.
-    # Şimdilik, eski `agent` yapısındaki gibi sadece temel pozisyon bilgilerini kullanıyoruz.
+    # Gelen indikatör verilerini metin formatına çevir
+    indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in indicators.items()])
+
     return f"""
-    Sen, tecrübeli bir pozisyon yöneticisisin.
-    ## Mevcut Pozisyon Bilgileri:
+    Sen, tecrübeli bir pozisyon yöneticisisin. Görevin, mevcut bir pozisyonun riskini ve potansiyelini anlık verilerle analiz edip net bir tavsiye sunmaktır.
+
+    ## MEVCUT POZİSYON BİLGİLERİ:
     - Sembol: {symbol}
     - Yön: {side}
     - Giriş Fiyatı: {entry_price}
     - Analiz Zaman Aralığı: {timeframe}
 
-    ## Görevin:
-    Bu pozisyonun GÜNCEL durumu hakkında net bir tavsiye ver. Teknik göstergeleri ve anlık fiyatı kullanarak pozisyonun devam edip etmemesi gerektiğini değerlendir. Kararın 'TUT' (Hold) veya 'KAPAT' (Close) şeklinde olmalı.
+    ## GÜNCEL PİYASA VERİLERİ:
+    - Anlık Fiyat: {current_price}
+    - Teknik Göstergeler ({timeframe}):
+    {indicator_text}
 
-    ## Nihai Rapor Formatı:
-    Kararını ve gerekçeni içeren bir JSON nesnesi döndür.
+    ## GÖREVİN:
+    Yukarıdaki GÜNCEL teknik göstergeleri ve anlık fiyatı kullanarak, bu pozisyonu elde tutmaya devam etmek mantıklı mı, yoksa risk yönetimi gereği şimdi kapatmak mı daha doğru? Kararın 'TUT' (Hold) veya 'KAPAT' (Close) şeklinde olmalı.
+
+    ## NİHAİ RAPOR FORMATI:
+    Kararını ve bu kararı vermendeki en önemli teknik gerekçeyi içeren bir JSON nesnesi döndür.
     Örnek: {{"recommendation": "KAPAT", "reason": "Fiyat giriş seviyesinin üzerine çıktı ve RSI aşırı alım sinyali veriyor, risk yönetimi gereği kapatılmalı."}}
     """
 
@@ -175,30 +176,49 @@ def create_reanalysis_prompt(position: dict) -> str:
 def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, entry_indicators: dict, trend_timeframe: str, trend_indicators: dict) -> str:
     entry_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in entry_indicators.items()])
     trend_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in trend_indicators.items()])
+    
+    # --- YENİ: Dominant Sinyal Belirleme Mantığı ---
+    entry_adx = entry_indicators.get('ADX', 0)
+    trend_adx = trend_indicators.get('ADX', 0)
+    
+    if entry_adx > trend_adx:
+        dominant_signal_source = entry_timeframe
+        dominant_signal_type = "Giriş Sinyali"
+    else:
+        dominant_signal_source = trend_timeframe
+        dominant_signal_type = "Ana Trend"
+    # --- YENİ MANTIK SONU ---
+
     return f"""
     Sen, Çoklu Zaman Aralığı (MTA) konusunda uzmanlaşmış, tecrübeli bir trading analistisin.
     Görevin, sana sunulan iki farklı zaman aralığına ait veriyi birleştirerek kapsamlı bir analiz yapmak ve net bir ticaret kararı ('AL', 'SAT' veya 'BEKLE') vermektir.
+
     ## ANALİZ FELSEFEN:
-    1.  **Önce Ana Trendi Anla:** '{trend_timeframe}' zaman aralığındaki verilere bakarak ana trendin yönünü ve GÜCÜNÜ (ADX değerine göre) belirle.
-    2.  **Giriş Sinyalini Değerlendir:** '{entry_timeframe}' zaman aralığındaki sinyali ve GÜCÜNÜ (ADX ve RSI seviyelerine göre) analiz et.
-    3.  **Sinyalleri Birlikte Yorumla (En Önemli Adım):**
-        - **Teyit Durumu:** Eğer ana trend ile giriş sinyali aynı yöndeyse, bu güçlü bir teyittir.
-        - **Çelişki Durumu:** Eğer ana trend ile giriş sinyali arasında bir uyumsuzluk varsa, sinyallerin gücünü tart.
-    
+    1.  **Önce Dominant Sinyali Belirle:** İki zaman diliminin ADX (Trend Gücü) değerlerini karşılaştır. ADX'i yüksek olan, o anki daha baskın sinyaldir.
+    2.  **Kararını Dominant Sinyale Göre Şekillendir:** Ana kararını, dominant sinyalin gösterdiği yöne göre ver.
+    3.  **Diğer Sinyali Teyit/Zayıflatma İçin Kullan:** Diğer zaman dilimindeki sinyali, ana kararını güçlendiren bir teyit veya zayıflatan bir uyarı olarak yorumla.
+
     ## SAĞLANAN VERİLER:
     - Sembol: {symbol}
     - Anlık Fiyat: {price}
+
     ### Ana Trend Verileri ({trend_timeframe})
     {trend_indicator_text}
+
     ### Giriş Sinyali Verileri ({entry_timeframe})
     {entry_indicator_text}
+
+    ## ÖNCELİKLİ DEĞERLENDİRME TALİMATI:
+    - **Dominant Sinyal Kaynağı:** {dominant_signal_source} ({dominant_signal_type})
+    - **Açıklama:** Analizini yaparken, '{dominant_signal_source}' zaman diliminden gelen sinyale daha fazla ağırlık ver. Kararını bu sinyal üzerine kur ve diğer zaman dilimini sadece destekleyici veya çürütücü bir faktör olarak kullan.
+
     ## İSTENEN JSON ÇIKTI FORMATI:
     ```json
     {{
       "symbol": "{symbol}",
       "timeframe": "{entry_timeframe}",
       "recommendation": "KARARIN (AL, SAT, veya BEKLE)",
-      "reason": "MTA analizine dayalı detaylı ve nitelikli gerekçen.",
+      "reason": "MTA ve dominant sinyal analizine dayalı detaylı ve nitelikli gerekçen.",
       "analysis_type": "MTA",
       "trend_timeframe": "{trend_timeframe}",
       "data": {{"price": {price}}}

@@ -9,8 +9,14 @@ import asyncio
 from google.api_core.exceptions import ResourceExhausted
 
 import database
-# YENİ: get_price_with_cache import edildi
-from tools import get_open_positions_from_exchange, _get_unified_symbol, get_price_with_cache
+# --- DÜZELTME BAŞLANGICI: Eksik olan fonksiyon import ediliyor ---
+from tools import (
+    get_open_positions_from_exchange, 
+    _get_unified_symbol, 
+    get_price_with_cache, 
+    get_technical_indicators
+)
+# --- DÜZELTME SONU ---
 from core.trader import open_new_trade, close_existing_trade, TradeException
 from core.position_manager import refresh_single_position_pnl
 from core import agent as core_agent
@@ -111,20 +117,47 @@ async def reanalyze_position(symbol: str):
     decoded_symbol = unquote(symbol)
     unified_symbol = _get_unified_symbol(decoded_symbol)
     position_to_manage = database.get_position_by_symbol(unified_symbol)
+
     if not position_to_manage:
         raise HTTPException(status_code=404, detail=f"Yönetilen pozisyon bulunamadı: {unified_symbol}")
+    
     try:
-        reanalysis_prompt = core_agent.create_reanalysis_prompt(position_to_manage)
+        # --- DÜZELTME BAŞLANGICI: Gerekli güncel veriler AI'a gönderilmeden önce çekiliyor ---
+        
+        # 1. Anlık fiyatı çek
+        current_price = await asyncio.to_thread(get_price_with_cache, unified_symbol)
+        if current_price is None:
+            raise HTTPException(status_code=503, detail=f"Yeniden analiz için {unified_symbol} fiyatı alınamadı.")
+
+        # 2. Anlık teknik göstergeleri çek
+        timeframe = position_to_manage.get('timeframe', '15m')
+        indicators_result = await asyncio.to_thread(get_technical_indicators, f"{unified_symbol},{timeframe}")
+        if indicators_result.get("status") != "success":
+            raise HTTPException(status_code=503, detail=f"Yeniden analiz için göstergeler alınamadı: {indicators_result.get('message')}")
+        
+        # 3. Zenginleştirilmiş prompt'u oluştur
+        reanalysis_prompt = core_agent.create_reanalysis_prompt(
+            position=position_to_manage,
+            current_price=current_price,
+            indicators=indicators_result['data']
+        )
+        # --- DÜZELTME SONU ---
+
         result = await asyncio.to_thread(core_agent.llm_invoke_with_fallback, reanalysis_prompt)
         parsed_data = core_agent.parse_agent_response(result.content)
+        
         if not parsed_data or "recommendation" not in parsed_data:
             raise HTTPException(status_code=500, detail="Yeniden analiz sırasında Agent'tan geçerli bir tavsiye alınamadı.")
+            
         parsed_data['symbol'] = unified_symbol
         return parsed_data
+        
     except ResourceExhausted:
         raise HTTPException(status_code=429, detail="Tüm AI modelleri için kota aşıldı.")
     except Exception as e:
+        logging.error(f"Pozisyon yeniden analiz edilirken hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Pozisyon yeniden analiz edilirken hata: {e}")
+
 
 # --- TOPLU İŞLEM ENDPOINT'LERİ ---
 
