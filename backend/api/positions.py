@@ -9,11 +9,11 @@ import asyncio
 from google.api_core.exceptions import ResourceExhausted
 
 import database
-from tools import get_open_positions_from_exchange, _get_unified_symbol
+# YENİ: get_price_with_cache import edildi
+from tools import get_open_positions_from_exchange, _get_unified_symbol, get_price_with_cache
 from core.trader import open_new_trade, close_existing_trade, TradeException
 from core.position_manager import refresh_single_position_pnl
 from core import agent as core_agent
-from tools import _fetch_price_natively
 
 router = APIRouter(
     prefix="/positions",
@@ -40,9 +40,10 @@ async def get_all_positions():
         for pos in managed_positions:
             pos_dict = dict(pos)
             try:
-                current_price = await asyncio.to_thread(_fetch_price_natively, pos_dict["symbol"])
+                # DEĞİŞİKLİK: _fetch_price_natively yerine get_price_with_cache kullanılıyor
+                current_price = await asyncio.to_thread(get_price_with_cache, pos_dict["symbol"])
+                
                 if current_price is not None:
-                    # Risk göstergesi için anlık fiyatı front-end'e gönder
                     pos_dict['current_price'] = current_price
 
                     entry_price = pos_dict.get('entry_price', 0)
@@ -59,7 +60,7 @@ async def get_all_positions():
                 updated_positions.append(pos_dict)
             except Exception as e:
                 logging.warning(f"Anlık P&L hesaplanırken hata ({pos_dict['symbol']}): {e}")
-                updated_positions.append(pos_dict) # Hata durumunda bile orijinal veriyi ekle
+                updated_positions.append(pos_dict) 
 
         return { "managed_positions": updated_positions, "unmanaged_positions": [] }
     except Exception as e:

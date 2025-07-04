@@ -5,10 +5,14 @@
 import logging
 import database
 from core import app_config
+# --- DÜZELTME BAŞLANGICI ---
+# Hatalı ve gereksiz olan _fetch_price_natively import'u kaldırıldı.
+# Diğer fonksiyonlar zaten tools/__init__.py üzerinden geliyor.
 from tools import (
     execute_trade_order, get_atr_value, get_wallet_balance,
-    cancel_all_open_orders, _fetch_price_natively
+    cancel_all_open_orders
 )
+# --- DÜZELTME SONU ---
 from notifications import send_telegram_message, format_open_position_message, format_close_position_message
 
 class TradeException(Exception):
@@ -17,12 +21,8 @@ class TradeException(Exception):
 def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_price: float):
     logging.info(f"Ticaret mantığı başlatıldı: {symbol} için yeni pozisyon açılıyor.")
 
-    # --- HATA DÜZELTMESİ (YENİ KOD) ---
-    # Yeni bir pozisyon açmadan önce, bu sembol için zaten açık bir pozisyon olup olmadığını kontrol et.
-    # Bu, 'UNIQUE constraint failed' veritabanı hatasını önler.
     if database.get_position_by_symbol(symbol):
         raise TradeException(f"'{symbol}' için zaten açık bir pozisyon mevcut. Yeni pozisyon açılamaz.")
-    # --- DÜZELTME SONU ---
     
     if len(database.get_all_positions()) >= app_config.settings['MAX_CONCURRENT_TRADES']:
         raise TradeException("Maksimum eşzamanlı pozisyon limitine ulaşıldı.")
@@ -105,10 +105,16 @@ def close_existing_trade(symbol: str, close_reason: str = "MANUAL"):
         if closed_pos:
             close_price = result.get('fill_price')
             
-            pnl = (close_price - closed_pos['entry_price']) * closed_pos.get('initial_amount', closed_pos['amount']) if closed_pos['side'] == 'buy' else (closed_pos['entry_price'] - close_price) * closed_pos.get('initial_amount', closed_pos['amount'])
-            
-            log_pos = {**closed_pos, 'close_price': close_price}
-            database.log_trade_to_history(closed_pos, close_price, close_reason)
+            if close_price is None:
+                logging.warning(f"{symbol} için kapanış fiyatı alınamadı, PNL hesaplanamıyor.")
+                # Alternatif olarak anlık fiyatı çekebiliriz, ama bu daha az doğru olur.
+                # Şimdilik PNL'i 0 kabul edebilir veya loglayıp geçebiliriz.
+                pnl = 0
+            else:
+                 pnl = (close_price - closed_pos['entry_price']) * closed_pos.get('initial_amount', closed_pos['amount']) if closed_pos['side'] == 'buy' else (closed_pos['entry_price'] - close_price) * closed_pos.get('initial_amount', closed_pos['amount'])
+
+            log_pos = {**closed_pos, 'close_price': close_price or 0}
+            database.log_trade_to_history(closed_pos, close_price or 0, close_reason)
             database.log_event("INFO", "Trade", f"Pozisyon kapatıldı: {symbol}. Sebep: {close_reason}. PNL: {pnl:+.2f} USDT")
             
             message = format_close_position_message(log_pos, pnl, close_reason)

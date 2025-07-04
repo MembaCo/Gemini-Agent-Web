@@ -5,14 +5,16 @@ import logging
 import asyncio
 import database
 from core import app_config
+# get_price_with_cache fonksiyonu zaten import edilmişti, kullanımı düzeltiliyor.
 from tools import (
-    _fetch_price_natively, update_stop_loss_order, execute_trade_order, 
+    get_price_with_cache, update_stop_loss_order, execute_trade_order, 
     get_open_positions_from_exchange, get_atr_value, _get_unified_symbol,
     fetch_open_orders, cancel_all_open_orders
 )
 from tools import exchange as exchange_tools
 from core.trader import close_existing_trade, TradeException
 from notifications import send_telegram_message, format_partial_tp_message
+
 
 def _ensure_exchange_is_available():
     """Yardımcı fonksiyon: Borsa bağlantısının varlığını kontrol eder."""
@@ -106,7 +108,7 @@ async def check_all_managed_positions():
         
         for position in active_positions:
             try:
-                current_price = _fetch_price_natively(position["symbol"])
+                current_price = get_price_with_cache(position["symbol"])
                 if current_price is None:
                     logging.warning(f"Fiyat alınamadığı için {position['symbol']} pozisyonu kontrol edilemedi.")
                     continue
@@ -191,7 +193,7 @@ async def refresh_single_position_pnl(symbol: str):
     if not _ensure_exchange_is_available(): return
     position = database.get_position_by_symbol(symbol)
     if not position: return
-    current_price = _fetch_price_natively(position["symbol"])
+    current_price = get_price_with_cache(position["symbol"])
     if current_price is None:
         database.update_position_pnl(position['symbol'], 0, 0)
         return

@@ -10,9 +10,17 @@ from google.api_core.exceptions import ResourceExhausted
 import database 
 from core import app_config, agent
 from core.trader import open_new_trade, TradeException
-from tools.exchange import get_top_gainers_losers, get_volume_spikes, get_technical_indicators, get_atr_value
+# --- DÜZELTME BAŞLANGICI ---
+# Hatalı importlar kaldırıldı ve doğru, önbellekli fonksiyon import edildi.
+from tools import (
+    get_top_gainers_losers, 
+    get_volume_spikes, 
+    get_technical_indicators, 
+    get_price_with_cache  # Önbellekli fonksiyonu kullan
+)
 from tools.utils import _get_unified_symbol
-from tools import _fetch_price_natively, exchange
+from tools import exchange as exchange_tools # 'exchange' objesine doğrudan erişim için
+# --- DÜZELTME SONU ---
 
 CONCURRENCY_LIMIT = 10
 semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
@@ -110,7 +118,7 @@ async def execute_single_scan_cycle():
             try:
                 entry_timeframe = config.get('PROACTIVE_SCAN_ENTRY_TIMEFRAME', '15m')
                 # OHLCV verisini çek
-                bars = await asyncio.to_thread(exchange.exchange.fetch_ohlcv, candidate['symbol'], timeframe=entry_timeframe, limit=100)
+                bars = await asyncio.to_thread(exchange_tools.exchange.fetch_ohlcv, candidate['symbol'], timeframe=entry_timeframe, limit=100)
                 if not bars or len(bars) < 50:
                     database.log_event("DEBUG", "Scanner", f"{candidate['symbol']} ön filtrelemesi atlandı: Yetersiz mum verisi.")
                     return None
@@ -129,31 +137,24 @@ async def execute_single_scan_cycle():
                 last = df.iloc[-1]
                 rsi = last.get(f"RSI_{config.get('PROACTIVE_SCAN_RSI_PERIOD', 14)}")
                 adx = last.get(f"ADX_{config.get('PROACTIVE_SCAN_ADX_PERIOD', 14)}")
-                atr = last.get(f"ATRr_{config.get('PROACTIVE_SCAN_ATR_PERIOD', 14)}") # ATR yüzdesi için 'ATRr' kullanılabilir
+                atr = last.get(f"ATRr_{config.get('PROACTIVE_SCAN_ATR_PERIOD', 14)}")
                 
                 if rsi is None or adx is None or atr is None: return None
 
-                # Temel RSI ve ADX Filtresi
                 rsi_lower, rsi_upper = config.get('PROACTIVE_SCAN_RSI_LOWER', 35), config.get('PROACTIVE_SCAN_RSI_UPPER', 65)
                 adx_threshold = config.get('PROACTIVE_SCAN_ADX_THRESHOLD', 20)
                 
                 if not ((rsi < rsi_lower or rsi > rsi_upper) and adx > adx_threshold):
-                    database.log_event("DEBUG", "Scanner", f"{candidate['symbol']} elendi (RSI/ADX). RSI: {rsi:.1f}, ADX: {adx:.1f}")
                     return None
 
-                # YENİ: Volatilite Filtresi
                 if config.get('PROACTIVE_SCAN_USE_VOLATILITY_FILTER', True):
                     atr_threshold = config.get('PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT', 0.5)
-                    # pandas_ta'dan gelen ATRr zaten yüzde cinsindendir
                     if atr < atr_threshold:
-                        database.log_event("DEBUG", "Scanner", f"{candidate['symbol']} elendi (Volatilite). ATR: {atr:.2f}% < {atr_threshold}%")
                         return None
                 
-                # YENİ: Hacim Onayı Filtresi
                 if config.get('PROACTIVE_SCAN_USE_VOLUME_FILTER', True):
                     volume_multiplier = config.get('PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER', 1.2)
                     if last['volume'] < last['volume_ema'] * volume_multiplier:
-                        database.log_event("DEBUG", "Scanner", f"{candidate['symbol']} elendi (Hacim). Hacim: {last['volume']:.0f} < Ort. Hacim: {last['volume_ema']:.0f}")
                         return None
                 
                 log_message = f"Ön Filtre BAŞARILI: {candidate['symbol']} (RSI:{rsi:.1f}, ADX:{adx:.1f}, ATR:{atr:.2f}%, Hacim:{last['volume']:.0f})"
@@ -194,7 +195,9 @@ async def execute_single_scan_cycle():
         symbol = candidate['symbol']
         async with semaphore:
             try:
-                current_price_val = await asyncio.to_thread(_fetch_price_natively, symbol)
+                # --- DÜZELTME ---
+                # Fiyat çekme işlemi artık önbellek destekli fonksiyon üzerinden yapılıyor.
+                current_price_val = await asyncio.to_thread(get_price_with_cache, symbol)
                 if not current_price_val:
                     return {"type": "error", "symbol": symbol, "message": "Fiyat bilgisi alınamadı."}
 
@@ -220,7 +223,6 @@ async def execute_single_scan_cycle():
                 if parsed_data.get('recommendation') in ['AL', 'SAT']:
                     if config.get('PROACTIVE_SCAN_AUTO_CONFIRM'):
                         try:
-                            # İşlem açma fonksiyonunu thread'de çalıştırarak bloklamayı engelle
                             await asyncio.to_thread(open_new_trade, symbol=symbol, recommendation=parsed_data['recommendation'], timeframe=entry_timeframe, current_price=current_price_val)
                             return {"type": "success", "symbol": symbol, "message": f"Otomatik pozisyon açıldı: {parsed_data['recommendation']}"}
                         except TradeException as te:

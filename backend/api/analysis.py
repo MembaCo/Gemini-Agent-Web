@@ -4,12 +4,15 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import logging
-import asyncio # Asenkron işlemler için import edildi
+import asyncio 
 from ccxt.base.errors import BadSymbol
 from google.api_core.exceptions import ResourceExhausted
 
 from core import agent as core_agent, app_config
-from tools import get_technical_indicators, _get_unified_symbol, _fetch_price_natively
+# --- DÜZELTME BAŞLANGICI ---
+# _fetch_price_natively yerine get_price_with_cache import ediliyor.
+from tools import get_technical_indicators, _get_unified_symbol, get_price_with_cache
+# --- DÜZELTME SONU ---
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
 
@@ -22,29 +25,28 @@ async def perform_new_analysis(request: NewAnalysisRequest):
     unified_symbol = _get_unified_symbol(request.symbol)
     logging.info(f"API: Yeni analiz isteği alındı - Sembol: {unified_symbol}, Zaman Aralığı: {request.timeframe}")
     try:
-        # DÜZELTME: Tüm bloke edici (senkron) çağrılar 'asyncio.to_thread' ile sarmalanıyor.
-        current_price = await asyncio.to_thread(_fetch_price_natively, unified_symbol)
+        # --- DÜZELTME ---
+        # Fiyat çekme işlemi artık önbellek destekli fonksiyon üzerinden yapılıyor.
+        current_price = await asyncio.to_thread(get_price_with_cache, unified_symbol)
         if current_price is None:
             raise HTTPException(status_code=404, detail=f"Fiyat bilgisi alınamadı: {unified_symbol}")
             
         use_mta = app_config.settings.get('USE_MTA_ANALYSIS', True)
         trend_timeframe = app_config.settings.get('MTA_TREND_TIMEFRAME', '4h')
         
-        # DÜZELTME: LangChain aracı, .invoke() metodu ile ve ana döngüyü bloklamadan çağrılıyor.
-        entry_indicators_result = await asyncio.to_thread(get_technical_indicators.invoke, f"{unified_symbol},{request.timeframe}")
+        entry_indicators_result = await asyncio.to_thread(get_technical_indicators, f"{unified_symbol},{request.timeframe}")
         if entry_indicators_result.get("status") != "success":
             raise HTTPException(status_code=400, detail=f"Analiz yapılamadı: {entry_indicators_result.get('message')}")
             
         final_prompt = ""
         if use_mta:
-            trend_indicators_result = await asyncio.to_thread(get_technical_indicators.invoke, f"{unified_symbol},{trend_timeframe}")
+            trend_indicators_result = await asyncio.to_thread(get_technical_indicators, f"{unified_symbol},{trend_timeframe}")
             if trend_indicators_result.get("status") != "success":
                 raise HTTPException(status_code=400, detail=f"Trend analizi ({trend_timeframe}) için veri alınamadı: {trend_indicators_result.get('message')}")
             final_prompt = core_agent.create_mta_analysis_prompt(unified_symbol, current_price, request.timeframe, entry_indicators_result["data"], trend_timeframe, trend_indicators_result["data"])
         else:
             final_prompt = core_agent.create_final_analysis_prompt(unified_symbol, request.timeframe, current_price, entry_indicators_result["data"])
             
-        # DÜZELTME: LLM çağrısı da ana döngüyü bloklamaması için thread'de çalıştırılıyor.
         result = await asyncio.to_thread(core_agent.llm_invoke_with_fallback, final_prompt)
         
         parsed_data = core_agent.parse_agent_response(result.content)

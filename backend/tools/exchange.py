@@ -12,16 +12,15 @@ from langchain.tools import tool
 from tenacity import retry, stop_after_attempt, wait_exponential
 from pathlib import Path
 
+from core import cache_manager 
 from .utils import _get_unified_symbol, _parse_symbol_timeframe_input, str_to_bool
 
 dotenv_path = Path(__file__).resolve().parent.parent / '.env'
-logging.info(f".env dosyası şu konumda aranıyor: {dotenv_path}")
 load_dotenv(dotenv_path=dotenv_path)
 
 exchange = None
-indicator_cache = {}
-CACHE_TTL_SECONDS = 180
 
+# ... (initialize_exchange ve _load_markets_with_retry aynı) ...
 @retry(wait=wait_exponential(multiplier=2, min=4, max=30), stop=stop_after_attempt(3))
 def _load_markets_with_retry(exchange_instance):
     logging.info("Borsa piyasa verileri yükleniyor (deneniyor)...")
@@ -99,6 +98,25 @@ def _fetch_price_natively(symbol: str) -> float | None:
         logging.warning(f"{symbol} için fiyat çekilirken yeniden denenecek hata: {e}")
         raise
 
+def get_price_with_cache(symbol: str) -> float | None:
+    """
+    Bir sembolün fiyatını önbellekten alır. Önbellekte yoksa veya süresi dolmuşsa,
+    borsadan çeker ve önbelleği günceller.
+    """
+    cache_key = f"price_{symbol}"
+    
+    cached_price = cache_manager.get(cache_key)
+    if cached_price is not None:
+        return cached_price
+
+    price = _fetch_price_natively(symbol)
+    
+    if price is not None:
+        # Fiyatlar için kısa bir TTL (5 saniye) belirliyoruz.
+        cache_manager.set(cache_key, price, ttl=5)
+        
+    return price
+
 def get_wallet_balance(quote_currency: str = "USDT") -> dict:
     """Cüzdan bakiyesini alır."""
     from core import app_config
@@ -127,12 +145,12 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
     """
     Belirtilen sembol ve zaman aralığı için teknik göstergeleri hesaplar.
     """
-    now = time.time()
-    if symbol_and_timeframe in indicator_cache:
-        cached_result, timestamp = indicator_cache[symbol_and_timeframe]
-        if (now - timestamp) < CACHE_TTL_SECONDS:
-            return cached_result
+    cache_key = f"indicators_{symbol_and_timeframe}"
+    cached_result = cache_manager.get(cache_key)
+    if cached_result:
+        return cached_result
 
+    # ... (hesaplama mantığı aynı)
     if not exchange:
         return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
     
@@ -163,12 +181,9 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
         df.ta.rsi(length=14, append=True)
         df.ta.adx(length=14, append=True)
         
-        rows_before_dropna = len(df)
         df.dropna(inplace=True)
-        rows_after_dropna = len(df)
 
         if df.empty:
-            logging.warning(f"İndikatör hesaplaması sonrası tüm veriler NaN içerdiği için atıldı. Sembol: {symbol}, Zaman Aralığı: {timeframe}. (Satır sayısı: {rows_before_dropna} -> {rows_after_dropna})")
             return {"status": "error", "message": f"Hesaplama sonrası geçerli veri kalmadı. Sembol: {symbol}"}
 
         last = df.iloc[-1]
@@ -176,17 +191,18 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
         adx_val = last.get('ADX_14')
 
         if rsi_val is None or pd.isna(rsi_val) or adx_val is None or pd.isna(adx_val):
-            logging.warning(f"İndikatör hesaplaması sonrası geçersiz değerler. RSI: {rsi_val}, ADX: {adx_val}. Sembol: {symbol}")
             return {"status": "error", "message": f"Hesaplama sonrası geçersiz gösterge değeri. Sembol: {symbol}"}
 
         indicators = {"RSI": float(rsi_val), "ADX": float(adx_val)}
         result = {"status": "success", "data": indicators}
-        indicator_cache[symbol_and_timeframe] = (result, now)
+        # İndikatörler için daha uzun bir TTL (180 saniye) belirliyoruz.
+        cache_manager.set(cache_key, result, ttl=180)
         return result
         
     except Exception as e:
         logging.error(f"Teknik gösterge alınırken genel hata ({symbol}): {e}", exc_info=True)
         return {"status": "error", "message": f"Beklenmedik bir hata oluştu: {str(e)}"}
+
 
 def execute_trade_order(symbol: str, side: str, amount: float, price: float = None, stop_loss: float = None, take_profit: float = None, leverage: float = None) -> dict:
     """İşlem emri gönderir."""

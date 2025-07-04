@@ -10,9 +10,10 @@
 import time
 import logging
 
-# Önbellek verilerini ve yaşam sürelerini tutacak olan sözlükler.
+# Önbellek verilerini, zaman damgalarını ve yaşam sürelerini tutacak olan sözlük.
 _cache = {}
-_cache_ttl = 180  # Saniye cinsinden önbellek yaşam süresi (TTL), örn: 3 dakika
+# Varsayılan genel TTL, eğer özel bir süre belirtilmezse kullanılır.
+DEFAULT_CACHE_TTL = 180
 
 def get(key: str):
     """
@@ -23,20 +24,32 @@ def get(key: str):
     if key not in _cache:
         return None
 
-    data, timestamp = _cache[key]
+    # --- DÜZELTME BAŞLANGICI ---
+    # Artık her kaydın kendi TTL değerini de saklıyoruz.
+    data, timestamp, ttl = _cache[key]
     
-    if (time.time() - timestamp) > _cache_ttl:
+    # Her kaydın kendi TTL değerine göre kontrol yapılıyor.
+    if (time.time() - timestamp) > ttl:
         # Yaşam süresi dolmuş, anahtarı önbellekten temizle
-        logging.info(f"Önbellek süresi doldu: '{key}'")
+        logging.debug(f"Önbellek süresi doldu: '{key}'")
         del _cache[key]
         return None
+    # --- DÜZELTME SONU ---
         
-    logging.info(f"Önbellekten okundu: '{key}'")
+    logging.debug(f"Önbellekten okundu: '{key}'")
     return data
 
-def set(key: str, value: any):
+def set(key: str, value: any, ttl: int = None):
     """
-    Bir anahtar/değer çiftini mevcut zaman damgasıyla birlikte önbelleğe ekler.
+    Bir anahtar/değer çiftini, belirtilen yaşam süresi (ttl) ile birlikte
+    önbelleğe ekler. Eğer ttl belirtilmezse, varsayılan TTL kullanılır.
     """
-    logging.info(f"Önbelleğe yazıldı: '{key}'")
-    _cache[key] = (value, time.time())
+    # --- DÜZELTME BAŞLANGICI ---
+    # Fonksiyon artık 'ttl' adında bir argüman kabul ediyor.
+    # Eğer bir ttl sağlanmazsa, varsayılan değeri kullan.
+    effective_ttl = ttl if ttl is not None else DEFAULT_CACHE_TTL
+    
+    logging.debug(f"Önbelleğe yazıldı: '{key}' (TTL: {effective_ttl}s)")
+    # Veriyle birlikte timestamp ve TTL'i de sakla.
+    _cache[key] = (value, time.time(), effective_ttl)
+    # --- DÜZELTME SONU ---

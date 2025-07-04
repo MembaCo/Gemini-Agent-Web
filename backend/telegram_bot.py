@@ -10,7 +10,11 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from google.api_core.exceptions import ResourceExhausted
 
 from core import app_config, trader, agent as core_agent
-from tools import _get_unified_symbol, _fetch_price_natively, get_technical_indicators
+# --- DÜZELTME BAŞLANGICI ---
+# Hatalı olan _fetch_price_natively import'u, doğru ve önbellekli
+# get_price_with_cache fonksiyonu ile değiştirildi.
+from tools import _get_unified_symbol, get_price_with_cache, get_technical_indicators
+# --- DÜZELTME SONU ---
 import database
 from ccxt.base.errors import BadSymbol
 
@@ -27,7 +31,9 @@ def format_positions_message(positions: list) -> str:
         symbol = pos['symbol'].replace('/', r'\/')
         side_emoji = "📈" if pos.get('side') == 'buy' else "📉"
         
-        current_price = _fetch_price_natively(pos['symbol'])
+        # --- DÜZELTME ---
+        # Fiyat çekme işlemi artık önbellekli fonksiyon üzerinden yapılıyor.
+        current_price = get_price_with_cache(pos['symbol'])
         pnl_text = ""
         if current_price:
             pnl = (current_price - pos['entry_price']) * pos['amount'] if pos['side'] == 'buy' else (pos['entry_price'] - current_price) * pos['amount']
@@ -61,7 +67,9 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         unified_symbol = _get_unified_symbol(symbol)
         await update.message.reply_text(f'`{unified_symbol}` için analiz başlatılıyor, lütfen bekleyin...')
         
-        current_price = _fetch_price_natively(unified_symbol)
+        # --- DÜZELTME ---
+        # Fiyat çekme işlemi artık önbellekli fonksiyon üzerinden yapılıyor.
+        current_price = get_price_with_cache(unified_symbol)
         if current_price is None:
             raise BadSymbol(f"Fiyat bilgisi alınamadı: {unified_symbol}")
 
@@ -84,7 +92,6 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             final_prompt = core_agent.create_final_analysis_prompt(unified_symbol, entry_timeframe, current_price, entry_indicators_data)
         
-        # DÜZELTME: llm.invoke yerine llm_invoke_with_fallback kullanılıyor.
         result = core_agent.llm_invoke_with_fallback(final_prompt)
         parsed_data = core_agent.parse_agent_response(result.content)
         

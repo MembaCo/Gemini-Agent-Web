@@ -7,7 +7,7 @@
 
 from .exchange import (
     initialize_exchange,
-    _fetch_price_natively,
+    get_price_with_cache,
     get_wallet_balance,
     get_market_price,
     get_technical_indicators,
@@ -18,7 +18,7 @@ from .exchange import (
     update_stop_loss_order,
     get_open_positions_from_exchange,
     cancel_all_open_orders,
-    fetch_open_orders, # YENİ: Eksik olan import ifadesi eklendi.
+    fetch_open_orders,
 )
 
 from .utils import (
