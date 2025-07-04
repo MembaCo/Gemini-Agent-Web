@@ -18,37 +18,44 @@ Kullanıcı dostu ve modern **web arayüzü** sayesinde tüm operasyonlarınız�
 - Pozisyon açılışı, kapanışı, tarayıcı aktiviteleri ve sistem uyarıları gibi tüm önemli olayları anlık olarak takip edin
 
 ### 🤖 Akıllı Fırsat Tarayıcı
-- Temel teknik göstergelerle ön eleme yapar, en potansiyelli adaylarda yapay zeka analizini devreye alır
-- API maliyetlerinde tasarruf & kota limitlerinden kaçınma
+- **Gelişmiş Filtreleme:** Temel teknik göstergeler (RSI, ADX), **volatilite (ATR)** ve **hacim** filtreleriyle ön eleme yaparak sadece en potansiyelli adaylarda yapay zeka analizini devreye alır.
+- **Maliyet Tasarrufu:** Akıllı filtreleme sayesinde gereksiz API çağrılarını ve maliyetleri önemli ölçüde azaltır.
 
 ### 📈 Strateji Backtest Motoru
 - Farklı sembol, tarih aralığı & parametrelerle geçmişe dönük test
 - Strateji ayarlarını ön ayar olarak kaydedip tekrar kullanılabilir
 
 ### ⚙️ Dinamik ve Veritabanı Tabanlı Ayarlar
-- Strateji & risk yönetimi ayarlarını (Kaldıraç, Risk Yüzdesi, Kara Liste vs.) arayüzden anlık güncelleyin
-- Tüm ayarlar kalıcı olarak veritabanında saklanır
+- Tüm strateji & risk yönetimi ayarlarını (Kaldıraç, Risk Yüzdesi, Kara Liste, **Bailout Stratejisi** vb.) arayüzden anlık güncelleyin.
+- Tüm ayarlar kalıcı olarak veritabanında saklanır.
 
 ### 🧠 Yapay Zeka Destekli Analiz
-- **Google Gemini 1.5 Flash/Pro** ile derinlemesine piyasa analizleri (Çoklu Zaman Aralığı/MTA dahil)
-- **Yedek model sistemi:** Model kotası dolarsa otomatik diğer modele geçiş
+- **Google Gemini 1.5 Flash/Pro** ile derinlemesine piyasa analizleri.
+- **Dominant Sinyal Analizi:** Çoklu Zaman Aralığı (MTA) analizlerinde, trendi daha güçlü olan zaman dilimini otomatik belirleyerek AI'ı yönlendirir ve daha tutarlı kararlar alınmasını sağlar.
+- **Yedek Model Sistemi:** Model kotası dolarsa otomatik diğer modele geçiş.
 
 ### 🛡️ Gelişmiş Risk Yönetimi
-- **Dinamik Pozisyon Boyutlandırma:** Her işlemde sermayenin belirli bir yüzdesi riske edilir
+- **Dinamik Pozisyon Boyutlandırma:** Her işlemde sermayenin belirli bir yüzdesi riske edilir.
+- **Akıllı Zarar Azaltma (Bailout Exit):** Zarardaki bir pozisyonun, stop-loss olmadan önce gösterdiği geçici toparlanma anında, **isteğe bağlı yapay zeka onayı** ile kapatılarak kayıpların minimize edilmesini sağlar.
 - **İz Süren Zarar Durdur (Trailing Stop-Loss)**
-- **Kısmi Kâr Alma:** Hedefe ulaşıldığında pozisyonun bir kısmını otomatik kapatır
+- **Kısmi Kâr Alma:** Hedefe ulaşıldığında pozisyonun bir kısmını otomatik kapatır.
 
 ### 🐳 Kolay Kurulum (Self-Hosted & Umbrel)
-- **Docker** ile tek komutla kendi sunucunuza veya **Umbrel** gibi platformlara kurulum
+- **Docker** ile tek komutla kendi sunucunuza veya **Umbrel** gibi platformlara kurulum.
 
 ### 💬 Telegram Entegrasyonu
-- Telegram komutları ile botu kontrol etme, analiz alma ve anlık bildirimler
+- Telegram komutları ile botu kontrol etme, analiz alma ve anlık bildirimler.
 
 ---
 
 ## 🖼️ Ekran Görüntüleri
 
-> Ekran görüntüleri eklemek için `screenshots/` klasörünü kullanın.
+<div align="center">
+
+<img src="./screenshots/gallery-1.png" width="300" alt="Image of a phone showing the App">
+<img src="./screenshots/gallery-2.png" width="300" alt="Image of a phone showing the App">
+<img src="./screenshots/gallery-3.png" width="300" alt="Image of a phone showing the App">
+</div>
 
 ---
 

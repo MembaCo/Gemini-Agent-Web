@@ -3,6 +3,25 @@
 Bu projede yapılan tüm önemli değişiklikler bu dosyada belgelenmektedir.
 
 ---
+### [4.4.0] - 2025-07-04 - Gelişmiş Risk Yönetimi ve Yapay Zeka Kararlılığı
+
+Bu sürüm, botun risk yönetimi kabiliyetlerini kökten değiştiren yeni özellikler eklerken, bir dizi kritik çalışma zamanı hatasını gidererek sistemi tamamen kararlı hale getirmeye odaklanmıştır.
+
+🚀 **Eklendi (Added)**
+- **Akıllı Zarar Azaltma (Bailout Exit):** Zarardaki pozisyonların, tam stop-loss olmadan önce gösterdiği geçici toparlanma anlarında, zararı minimize etmek amacıyla kapatılmasını sağlayan yeni bir strateji eklendi.
+- **Yapay Zeka Onaylı Çıkış Kararları:** "Bailout Exit" stratejisi, isteğe bağlı olarak yapay zeka onayına sunulabilir hale getirildi. Artık bot, bir pozisyonu erken kapatmadan önce AI'a "Bu toparlanma gerçek mi, yoksa tuzak mı?" diye danışarak daha akıllı kararlar verebiliyor.
+- **Dominant Sinyal Analizi:** Çoklu Zaman Aralığı (MTA) analizlerinde, hangi zaman diliminin trendinin daha güçlü olduğunu (ADX'e göre) belirleyip bu bilgiyi AI'a sunan "Dominant Sinyal" mantığı eklendi. Bu, AI'ın daha tutarlı ve kararlı tavsiyeler vermesini sağlar.
+- **Detaylı Strateji Loglaması:** `position_manager` ve `scanner` modüllerindeki loglama, hangi adayın neden filtrelendiğini, bailout stratejisinin ne zaman devreye girdiğini ve AI'ın karar gerekçelerini kaydedecek şekilde zenginleştirildi.
+
+✅ **Düzeltildi (Fixed)**
+- **KRİTİK: Pozisyon Yeniden Analiz Mantığı:** "Yeniden Analiz Et" özelliğinin, yapay zekaya boş veri göndererek anlamsız yanıtlar almasına neden olan temel mantık hatası giderildi. Artık bu özellik, anlık fiyat ve güncel teknik göstergeleri toplayarak AI'a tam içerik sunmaktadır.
+- **Uygulama Başlatma Hataları:** Farklı modüller (`position_manager`, `trader`, `scanner`, `telegram_bot`) arasındaki hatalı `import` çağrılarından kaynaklanan ve uygulamanın başlamasını engelleyen bir dizi `ImportError`, `NameError` ve `TypeError` hatası tamamen giderildi.
+- **Önbellek (Cache) Sistemi Hatası:** Dinamik TTL (Time-To-Live) özelliğinin eklenmesi sırasında `cache_manager` modülünde oluşan ve `TypeError` hatasına yol açan uyumsuzluk düzeltildi.
+
+🔄 **Değiştirildi (Changed)**
+- **Merkezi Fiyat Önbellekleme (Caching):** Uygulama genelindeki tüm anlık fiyat sorguları (`get_price_with_cache`), API çağrılarını önemli ölçüde azaltan ve sistem performansını artıran merkezi ve esnek bir önbellek mekanizması kullanacak şekilde yeniden yapılandırıldı.
+
+---
 
 ### [4.3.0] - 2025-06-30 - Arayüz ve Kullanıcı Deneyimi İyileştirmeleri
 
