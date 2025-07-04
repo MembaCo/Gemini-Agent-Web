@@ -19,7 +19,9 @@ Kullanıcı dostu ve modern web arayüzü sayesinde tüm operasyonlarınızı ko
 
 <div align="center">
 
-> Proje arayüzüne ait ekran görüntülerini buraya ekleyebilirsiniz.
+><img src="./screenshots/gallery-1.png" width="300" alt="Image of a phone showing the App">
+><img src="./screenshots/gallery-2.png" width="300" alt="Image of a phone showing the App">
+><img src="./screenshots/gallery-3.png" width="300" alt="Image of a phone showing the App">
 
 </div>
 
