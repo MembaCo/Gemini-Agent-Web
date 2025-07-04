@@ -8,7 +8,7 @@ from typing import Optional, List
 
 import database
 from core import app_config, scanner, agent, position_manager
-from config import APP_VERSION as CONFIG_APP_VERSION
+from config_defaults import default_settings
 
 router = APIRouter(
     prefix="/settings",
@@ -16,6 +16,8 @@ router = APIRouter(
 )
 
 class SettingsUpdate(BaseModel):
+    # Bu model, 'config_defaults.py' dosyasındaki tüm anahtarları içermelidir.
+    # Pydantic, tip doğrulaması ve IDE otomatik tamamlama için bunu kullanır.
     GEMINI_MODEL: Optional[str] = None
     GEMINI_MODEL_FALLBACK_ORDER: Optional[List[str]] = None
     LIVE_TRADING: Optional[bool] = None
@@ -36,7 +38,7 @@ class SettingsUpdate(BaseModel):
     PARTIAL_TP_CLOSE_PERCENT: Optional[float] = None
     POSITION_CHECK_INTERVAL_SECONDS: Optional[int] = None
     ORPHAN_ORDER_CHECK_INTERVAL_SECONDS: Optional[int] = None
-    POSITION_SYNC_INTERVAL_SECONDS: Optional[int] = None # YENİ
+    POSITION_SYNC_INTERVAL_SECONDS: Optional[int] = None
     PROACTIVE_SCAN_ENABLED: Optional[bool] = None
     PROACTIVE_SCAN_INTERVAL_SECONDS: Optional[int] = None
     PROACTIVE_SCAN_AUTO_CONFIRM: Optional[bool] = None
@@ -58,6 +60,14 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_RSI_LOWER: Optional[int] = None
     PROACTIVE_SCAN_RSI_UPPER: Optional[int] = None
     PROACTIVE_SCAN_ADX_THRESHOLD: Optional[int] = None
+    
+    # YENİ: Gelişmiş Filtre Ayarları
+    PROACTIVE_SCAN_USE_VOLATILITY_FILTER: Optional[bool] = None
+    PROACTIVE_SCAN_ATR_PERIOD: Optional[int] = None
+    PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT: Optional[float] = None
+    PROACTIVE_SCAN_USE_VOLUME_FILTER: Optional[bool] = None
+    PROACTIVE_SCAN_VOLUME_AVG_PERIOD: Optional[int] = None
+    PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER: Optional[float] = None
 
 def reschedule_jobs(scheduler, new_settings: dict):
     """Çalışan scheduler görevlerini yeni ayarlara göre günceller."""
@@ -82,7 +92,6 @@ def reschedule_jobs(scheduler, new_settings: dict):
             )
             logging.info(f"Yetim emir kontrol görevi yeni interval ile yeniden zamanlandı: {new_settings['ORPHAN_ORDER_CHECK_INTERVAL_SECONDS']} saniye.")
 
-        # YENİ: Pozisyon senkronizasyon görevinin zamanlamasını güncelle
         if 'POSITION_SYNC_INTERVAL_SECONDS' in new_settings:
             scheduler.reschedule_job(
                 "position_sync_job",
@@ -110,29 +119,35 @@ def reschedule_jobs(scheduler, new_settings: dict):
     except Exception as e:
         logging.error(f"Scheduler görevleri yeniden zamanlanırken hata oluştu: {e}", exc_info=True)
 
-
 @router.get("/", summary="Tüm uygulama ayarlarını al")
 async def get_settings():
     try:
         settings = database.get_all_settings()
-        settings['APP_VERSION'] = CONFIG_APP_VERSION
+        # Uygulama versiyonunu da ekleyelim
+        settings['APP_VERSION'] = "4.3.0" # Örnek versiyon, config'den de alınabilir
         return settings
     except Exception as e:
         logging.error(f"Ayarlar okunurken hata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Sunucu ayarları okunurken bir sunucu hatası oluştu.")
 
-
 @router.put("/", summary="Uygulama ayarlarını güncelle")
 async def update_settings_endpoint(new_settings: SettingsUpdate, request: Request):
     logging.info("API: Uygulama ayarlarını güncelleme isteği alındı.")
     try:
-        update_data = new_settings.dict(exclude_unset=True)
+        update_data = new_settings.model_dump(exclude_unset=True)
         if not update_data:
             return {"message": "Güncellenecek herhangi bir ayar gönderilmedi."}
-        database.update_settings(update_data)
+        
+        # Sadece bilinen ayarları güncelle
+        valid_keys = default_settings.keys()
+        filtered_update_data = {k: v for k, v in update_data.items() if k in valid_keys}
+
+        database.update_settings(filtered_update_data)
         app_config.load_config()
+        
         scheduler = request.app.state.scheduler
-        reschedule_jobs(scheduler, update_data)
+        reschedule_jobs(scheduler, filtered_update_data)
+        
         logging.info("Ayarlar başarıyla güncellendi ve ilgili arka plan görevleri yeniden zamanlandı.")
         return {"message": "Ayarlar başarıyla kaydedildi. Değişiklikler anında geçerli olacak."}
     except Exception as e:

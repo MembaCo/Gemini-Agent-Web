@@ -13,7 +13,7 @@ default_settings = {
         "gemini-2.5-pro",
     ],
 
-    # === CANLI İŞLEM AYARI ===
+# === CANLI İŞLEM AYARI ===
     "LIVE_TRADING": True,
 
     # === TEMEL STRATEJİ AYARLARI ===
@@ -60,11 +60,19 @@ default_settings = {
     "PROACTIVE_SCAN_VOLUME_MULTIPLIER": 5.0,
     "PROACTIVE_SCAN_VOLUME_PERIOD": 24,
 
-    # YENİ: Proaktif Tarayıcı için AI Öncesi Filtreleme Ayarları
-    "PROACTIVE_SCAN_PREFILTER_ENABLED": True,    # AI analizinden önce temel teknik filtreleme yapılsın mı?
-    "PROACTIVE_SCAN_RSI_LOWER": 35,              # Ön filtreleme için RSI alt sınırı (bu değerin altındakiler 'AL' adayı olabilir).
-    "PROACTIVE_SCAN_RSI_UPPER": 65,              # Ön filtreleme için RSI üst sınırı (bu değerin üstündekiler 'SAT' adayı olabilir).
-    "PROACTIVE_SCAN_ADX_THRESHOLD": 20,          # Ön filtreleme için minimum ADX (trend gücü) değeri.
+    # --- AI Öncesi Filtreleme Ayarları ---
+    "PROACTIVE_SCAN_PREFILTER_ENABLED": True,
+    "PROACTIVE_SCAN_RSI_LOWER": 35,
+    "PROACTIVE_SCAN_RSI_UPPER": 65,
+    "PROACTIVE_SCAN_ADX_THRESHOLD": 20,
+    
+    # YENİ: Gelişmiş Filtre Ayarları
+    "PROACTIVE_SCAN_USE_VOLATILITY_FILTER": True, # ATR kullanarak volatilite filtresi aktif edilsin mi?
+    "PROACTIVE_SCAN_ATR_PERIOD": 14,              # Volatilite hesaplaması için ATR periyodu.
+    "PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT": 0.5,  # ATR değeri, anlık fiyatın en az yüzde kaçı olmalı? (örn: 0.5 -> %0.5)
+    "PROACTIVE_SCAN_USE_VOLUME_FILTER": True,     # Hacim onayı filtresi aktif edilsin mi?
+    "PROACTIVE_SCAN_VOLUME_AVG_PERIOD": 20,       # Ortalama hacim hesaplaması için kullanılacak periyot.
+    "PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER": 1.2, # Son mumun hacmi, ortalama hacmin en az kaç katı olmalı? (örn: 1.2 -> %20 daha fazla)
     
     # --- FİLTRELEME & BİLDİRİM ---
     "PROACTIVE_SCAN_BLACKLIST": ["SHIB", "PEPE", "MEME", "DOGE"],

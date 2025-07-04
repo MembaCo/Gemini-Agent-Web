@@ -10,16 +10,12 @@ from google.api_core.exceptions import ResourceExhausted
 import database 
 from core import app_config, agent
 from core.trader import open_new_trade, TradeException
-from tools.exchange import get_top_gainers_losers, get_volume_spikes, get_technical_indicators
+from tools.exchange import get_top_gainers_losers, get_volume_spikes, get_technical_indicators, get_atr_value
 from tools.utils import _get_unified_symbol
-from tools import _fetch_price_natively
+from tools import _fetch_price_natively, exchange
 
-# --- YENİ KOD ---
-# Binance API'sine yapılacak eşzamanlı istek sayısını sınırlamak için bir semafor oluştur.
-# Bu, "Connection pool is full" hatasını önler.
 CONCURRENCY_LIMIT = 10
 semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
-# --- YENİ KOD SONU ---
 
 
 async def _fetch_candidates_from_sources(config: dict) -> list[dict]:
@@ -37,7 +33,6 @@ async def _fetch_candidates_from_sources(config: dict) -> list[dict]:
         if config.get('PROACTIVE_SCAN_USE_GAINERS_LOSERS'):
             top_n = config.get('PROACTIVE_SCAN_TOP_N', 10)
             min_volume_usdt = config.get('PROACTIVE_SCAN_MIN_VOLUME_USDT', 1000000)
-            # Semafor ile eşzamanlı çağrıyı sınırla
             async with semaphore:
                 return await asyncio.to_thread(get_top_gainers_losers, top_n, min_volume_usdt)
         return []
@@ -48,12 +43,10 @@ async def _fetch_candidates_from_sources(config: dict) -> list[dict]:
             volume_period = config.get('PROACTIVE_SCAN_VOLUME_PERIOD', 24)
             volume_multiplier = config.get('PROACTIVE_SCAN_VOLUME_MULTIPLIER', 5.0)
             min_volume_usdt = config.get('PROACTIVE_SCAN_MIN_VOLUME_USDT', 1000000)
-            # Semafor ile eşzamanlı çağrıyı sınırla
             async with semaphore:
                 return await asyncio.to_thread(get_volume_spikes, volume_timeframe, volume_period, volume_multiplier, min_volume_usdt)
         return []
 
-    # Kaynakları paralel olarak, ancak kontrollü bir şekilde çek
     gainers_losers_results, volume_spikes_results = await asyncio.gather(
         fetch_gainers_losers(),
         fetch_volume_spikes()
@@ -66,9 +59,8 @@ async def _fetch_candidates_from_sources(config: dict) -> list[dict]:
         if item['symbol'] not in all_symbols_with_source:
             all_symbols_with_source[item['symbol']] = {"symbol": item['symbol'], "source": "Volume Spike"}
 
-    blacklist = config.get('PROACTIVE_SCAN_BLACKLIST', [])
-    blacklist_upper = {s.upper() for s in blacklist}
-    final_candidates = [ data for symbol, data in all_symbols_with_source.items() if symbol.split('/')[0] not in blacklist_upper ]
+    blacklist = {s.upper().strip() for s in config.get('PROACTIVE_SCAN_BLACKLIST', [])}
+    final_candidates = [ data for symbol, data in all_symbols_with_source.items() if symbol.split('/')[0] not in blacklist ]
     return final_candidates
 
 
@@ -80,7 +72,6 @@ async def get_interactive_scan_candidates() -> list[dict]:
     entry_timeframe = config.get('PROACTIVE_SCAN_ENTRY_TIMEFRAME', '15m')
     
     async def fetch_indicators(cand):
-        # Her bir gösterge çekme işlemini semafor ile sınırla
         async with semaphore:
             indicators_result = await asyncio.to_thread(get_technical_indicators, f"{cand['symbol']},{entry_timeframe}")
         if indicators_result.get("status") == "success":
@@ -118,22 +109,58 @@ async def execute_single_scan_cycle():
         async with semaphore:
             try:
                 entry_timeframe = config.get('PROACTIVE_SCAN_ENTRY_TIMEFRAME', '15m')
-                indicators_result = await asyncio.to_thread(get_technical_indicators, f"{candidate['symbol']},{entry_timeframe}")
+                # OHLCV verisini çek
+                bars = await asyncio.to_thread(exchange.exchange.fetch_ohlcv, candidate['symbol'], timeframe=entry_timeframe, limit=100)
+                if not bars or len(bars) < 50:
+                    database.log_event("DEBUG", "Scanner", f"{candidate['symbol']} ön filtrelemesi atlandı: Yetersiz mum verisi.")
+                    return None
                 
-                if indicators_result.get("status") == "success":
-                    rsi = indicators_result['data'].get('RSI')
-                    adx = indicators_result['data'].get('ADX')
-                    
-                    if rsi is None or adx is None: return None
+                df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                
+                # İndikatörleri hesapla
+                df.ta.rsi(length=config.get('PROACTIVE_SCAN_RSI_PERIOD', 14), append=True)
+                df.ta.adx(length=config.get('PROACTIVE_SCAN_ADX_PERIOD', 14), append=True)
+                df.ta.atr(length=config.get('PROACTIVE_SCAN_ATR_PERIOD', 14), append=True)
+                df['volume_ema'] = df['volume'].ewm(span=config.get('PROACTIVE_SCAN_VOLUME_AVG_PERIOD', 20), adjust=False).mean()
 
-                    rsi_lower = config.get('PROACTIVE_SCAN_RSI_LOWER', 35)
-                    rsi_upper = config.get('PROACTIVE_SCAN_RSI_UPPER', 65)
-                    adx_threshold = config.get('PROACTIVE_SCAN_ADX_THRESHOLD', 20)
+                df.dropna(inplace=True)
+                if df.empty: return None
 
-                    if (rsi < rsi_lower or rsi > rsi_upper) and adx > adx_threshold:
-                        logging.info(f"Ön Filtre BAŞARILI: {candidate['symbol']} (RSI: {rsi:.2f}, ADX: {adx:.2f})")
-                        return candidate
-                return None
+                last = df.iloc[-1]
+                rsi = last.get(f"RSI_{config.get('PROACTIVE_SCAN_RSI_PERIOD', 14)}")
+                adx = last.get(f"ADX_{config.get('PROACTIVE_SCAN_ADX_PERIOD', 14)}")
+                atr = last.get(f"ATRr_{config.get('PROACTIVE_SCAN_ATR_PERIOD', 14)}") # ATR yüzdesi için 'ATRr' kullanılabilir
+                
+                if rsi is None or adx is None or atr is None: return None
+
+                # Temel RSI ve ADX Filtresi
+                rsi_lower, rsi_upper = config.get('PROACTIVE_SCAN_RSI_LOWER', 35), config.get('PROACTIVE_SCAN_RSI_UPPER', 65)
+                adx_threshold = config.get('PROACTIVE_SCAN_ADX_THRESHOLD', 20)
+                
+                if not ((rsi < rsi_lower or rsi > rsi_upper) and adx > adx_threshold):
+                    database.log_event("DEBUG", "Scanner", f"{candidate['symbol']} elendi (RSI/ADX). RSI: {rsi:.1f}, ADX: {adx:.1f}")
+                    return None
+
+                # YENİ: Volatilite Filtresi
+                if config.get('PROACTIVE_SCAN_USE_VOLATILITY_FILTER', True):
+                    atr_threshold = config.get('PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT', 0.5)
+                    # pandas_ta'dan gelen ATRr zaten yüzde cinsindendir
+                    if atr < atr_threshold:
+                        database.log_event("DEBUG", "Scanner", f"{candidate['symbol']} elendi (Volatilite). ATR: {atr:.2f}% < {atr_threshold}%")
+                        return None
+                
+                # YENİ: Hacim Onayı Filtresi
+                if config.get('PROACTIVE_SCAN_USE_VOLUME_FILTER', True):
+                    volume_multiplier = config.get('PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER', 1.2)
+                    if last['volume'] < last['volume_ema'] * volume_multiplier:
+                        database.log_event("DEBUG", "Scanner", f"{candidate['symbol']} elendi (Hacim). Hacim: {last['volume']:.0f} < Ort. Hacim: {last['volume_ema']:.0f}")
+                        return None
+                
+                log_message = f"Ön Filtre BAŞARILI: {candidate['symbol']} (RSI:{rsi:.1f}, ADX:{adx:.1f}, ATR:{atr:.2f}%, Hacim:{last['volume']:.0f})"
+                logging.info(log_message)
+                database.log_event("INFO", "Scanner", log_message)
+                return candidate
+
             except Exception as e:
                 logging.error(f"Ön filtreleme sırasında {candidate['symbol']} için hata: {e}")
                 return None
@@ -153,15 +180,15 @@ async def execute_single_scan_cycle():
     if not final_candidates_to_analyze:
         logging.info("PROAKTİF TARAYICI: AI ile analiz edilecek aday bulunamadı. Döngü sonlandırılıyor.")
         database.log_event("INFO", "Scanner", "AI analizi için kriterlere uyan aday bulunamadı.")
-        return {"summary": {"total_scanned": len(initial_candidates), "pre_filtered_count": len(initial_candidates), "ai_analyzed": 0, "opportunities_found": 0, "auto_trades_opened": 0, "data_errors": 0}, "details": []}
+        return {"summary": {"total_scanned": len(initial_candidates), "pre_filtered_count": 0, "ai_analyzed": 0, "opportunities_found": 0, "auto_trades_opened": 0, "data_errors": 0}, "details": []}
 
     opportunities_found = []
     auto_trades_opened = []
     data_errors = 0
     
     entry_timeframe = config.get('PROACTIVE_SCAN_ENTRY_TIMEFRAME', '15m')
-    trend_timeframe = config.get('PROACTIVE_SCAN_TREND_TIMEFRAME', '4h')
-    use_mta = config.get('PROACTIVE_SCAN_MTA_ENABLED', True)
+    trend_timeframe = config.get('MTA_TREND_TIMEFRAME', '4h')
+    use_mta = config.get('USE_MTA_ANALYSIS', True)
 
     async def analyze_symbol(candidate):
         symbol = candidate['symbol']
@@ -193,13 +220,14 @@ async def execute_single_scan_cycle():
                 if parsed_data.get('recommendation') in ['AL', 'SAT']:
                     if config.get('PROACTIVE_SCAN_AUTO_CONFIRM'):
                         try:
+                            # İşlem açma fonksiyonunu thread'de çalıştırarak bloklamayı engelle
                             await asyncio.to_thread(open_new_trade, symbol=symbol, recommendation=parsed_data['recommendation'], timeframe=entry_timeframe, current_price=current_price_val)
                             return {"type": "success", "symbol": symbol, "message": f"Otomatik pozisyon açıldı: {parsed_data['recommendation']}"}
                         except TradeException as te:
                             return {"type": "critical", "symbol": symbol, "message": f"Otomatik işlem hatası: {te}"}
                     else:
                         database.log_event("SUCCESS", "Scanner", f"Fırsat bulundu: {parsed_data.get('recommendation')} {symbol}. Kullanıcı onayı bekleniyor.")
-                        return {"type": "opportunity", "symbol": symbol, "data": parsed_data}
+                        return {"type": "opportunity", "data": parsed_data}
                 
                 return {"type": "info", "symbol": symbol, "message": f"Analiz sonucu: BEKLE."}
                 
@@ -220,7 +248,7 @@ async def execute_single_scan_cycle():
             elif res['type'] in ['error', 'critical']: data_errors += 1
 
     summary_msg = f"Tarama tamamlandı. Onay bekleyen: {len(opportunities_found)}, Otomatik açılan: {len(auto_trades_opened)}, Hata: {data_errors}"
-    logging.info(f"PROAKTİF TARAYICI DÖNGÜSÜ TAMAMLANDI. Taranan: {len(initial_candidates)}, AI Analizi Yapılan: {len(final_candidates_to_analyze)}, Otomatik Açılan: {len(auto_trades_opened)}, Onay Bekleyen: {len(opportunities_found)}, Hata: {data_errors}")
+    logging.info(f"PROAKTİF TARAYICI DÖNGÜSÜ TAMAMLANDI. Taranan: {len(initial_candidates)}, Ön Filtreden Geçen: {len(final_candidates_to_analyze)}, AI Analizi Yapılan: {len(analysis_results)}, Otomatik Açılan: {len(auto_trades_opened)}, Onay Bekleyen: {len(opportunities_found)}, Hata: {data_errors}")
     database.log_event("INFO", "Scanner", summary_msg)
 
     return {
