@@ -2,18 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
 import { useAuth } from '../context/AuthContext';
 import { X, Loader2 } from 'lucide-react';
+import { Modal } from './SharedComponents'; 
 
-// Modal bileşeni, daha büyük projelerde kendi dosyasına taşınabilir.
-const Modal = ({ children, isVisible, onClose, maxWidth = 'max-w-4xl' }) => {
-    if (!isVisible) return null;
-    return (
-      <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4" onClick={onClose}>
-        <div className={`bg-gray-800 border border-gray-700 rounded-xl w-full h-full md:h-auto md:max-h-[80vh] ${maxWidth}`} onClick={e => e.stopPropagation()}>
-            {children}
-        </div>
-      </div>
-    );
-};
 
 export const TradeChartModal = ({ isVisible, onClose, trade }) => {
     const chartContainerRef = useRef(null);
@@ -21,6 +11,7 @@ export const TradeChartModal = ({ isVisible, onClose, trade }) => {
     const { fetchChartData, showToast } = useAuth();
     const [chartData, setChartData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [displayTimeframe, setDisplayTimeframe] = useState(null);
 
     useEffect(() => {
         // Modal görünür değilse veya işlem verisi yoksa hiçbir şey yapma
@@ -28,28 +19,47 @@ export const TradeChartModal = ({ isVisible, onClose, trade }) => {
 
         const getChartData = async () => {
             setIsLoading(true);
-            try {
-                // 'timeframe' bilgisi veritabanından gelecek.
-                // Eğer yoksa (eski kayıtlar için), '1h' varsayılan olarak kullanılacak.
-                const timeframeToFetch = trade.timeframe || '1h';
-                
-                const data = await fetchChartData({ 
-                    symbol: trade.symbol,
-                    timeframe: timeframeToFetch, 
-                    limit: 500 
-                });
-                
-                if (data.length === 0) {
-                    showToast(`${trade.symbol} için ${timeframeToFetch} zaman aralığında grafik verisi bulunamadı. Bu, eski bir işlem kaydı olabilir.`, 'warning');
-                }
-                setChartData(data);
+            setChartData([]); // Her yeni açılışta veriyi temizle
+            setDisplayTimeframe(null);
 
-            } catch (error) {
-                showToast(`Grafik verileri alınamadı: ${error.message}`, 'error');
-                setChartData([]); // Hata durumunda veriyi temizle
-            } finally {
-                setIsLoading(false);
+            const tradeEntryTimestamp = Math.floor(new Date(trade.opened_at || trade.created_at).getTime() / 1000);
+
+            // Aranacak zaman aralıkları (en olasıdan başlayarak)
+            const timeframesToTry = trade.timeframe 
+                ? [trade.timeframe] 
+                : ['15m', '5m', '30m', '1h', '4h'];
+
+            let foundData = null;
+
+            for (const tf of timeframesToTry) {
+                try {
+                    console.log(`Grafik verisi deneniyor: ${trade.symbol} - ${tf}`);
+                    const data = await fetchChartData({ 
+                        symbol: trade.symbol,
+                        timeframe: tf, 
+                        limit: 500 
+                    });
+
+                    // Veri içinde işlemin başlangıç zamanını arıyoruz
+                    if (data && data.some(bar => bar.time === tradeEntryTimestamp)) {
+                        foundData = data;
+                        setDisplayTimeframe(tf);
+                        showToast(`${trade.symbol} için ${tf} grafiği bulundu.`, 'info');
+                        break; // Uygun veriyi bulunca döngüden çık
+                    }
+                } catch (error) {
+                    // Belirli bir timeframe için hata olursa sonrakiyle devam et
+                    console.warn(`${tf} için veri çekilirken hata:`, error);
+                }
             }
+
+            if (foundData) {
+                setChartData(foundData);
+            } else {
+                showToast(`${trade.symbol} için uygun grafik verisi bulunamadı. Bu çok eski bir kayıt olabilir.`, 'warning');
+            }
+
+            setIsLoading(false);
         };
 
         getChartData();
@@ -154,15 +164,15 @@ export const TradeChartModal = ({ isVisible, onClose, trade }) => {
     }, [isLoading, chartData, trade]);
 
     return (
-        <Modal isVisible={isVisible} onClose={onClose}>
+        <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-4xl">
             <div className="flex flex-col h-full">
                 <div className="flex justify-between items-center p-4 border-b border-gray-700">
-                    <h2 className="text-xl font-bold text-white">İşlem Detayı: {trade?.symbol} ({trade?.timeframe || '...'})</h2>
+                     {/* YENİ: Başlığı dinamik hale getiriyoruz */}
+                    <h2 className="text-xl font-bold text-white">İşlem Detayı: {trade?.symbol} ({displayTimeframe || '...'})</h2>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white">
                         <X size={24} />
                     </button>
                 </div>
-                {/* DEĞİŞTİRİLDİ: JSX yapısı daha kararlı hale getirildi */}
                 <div className="flex-grow relative">
                     {isLoading ? (
                         <div className="absolute inset-0 flex justify-center items-center bg-gray-800/50 z-10">

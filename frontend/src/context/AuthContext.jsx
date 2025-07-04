@@ -108,7 +108,8 @@ export const AuthProvider = ({ children }) => {
         <AuthContext.Provider value={value}>
             {children}
             {isAuthenticated && (
-                <button onClick={logout} className="fixed top-5 right-5 bg-red-600/80 hover:bg-red-600 text-white p-2 rounded-full shadow-lg z-50 group transition-transform hover:scale-110">
+                // DEĞİŞİKLİK: z-50 -> z-30
+                <button onClick={logout} className="fixed top-5 right-5 bg-red-600/80 hover:bg-red-600 text-white p-2 rounded-full shadow-lg z-30 group transition-transform hover:scale-110">
                     <Power size={20} />
                 </button>
             )}

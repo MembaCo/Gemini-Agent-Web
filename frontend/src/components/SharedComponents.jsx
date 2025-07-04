@@ -2,13 +2,13 @@ import React from 'react';
 import { Loader2, X, Brain, ShieldX } from 'lucide-react';
 
 export const Modal = ({ children, isVisible, onClose, maxWidth = 'max-w-md' }) => {
-  if (!isVisible) return null;
-  return (
-    <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-40 p-4" onClick={onClose}>
-      <div className={`bg-gray-800 border border-gray-700 rounded-xl p-6 sm:p-8 w-full ${maxWidth} flex flex-col`} onClick={e => e.stopPropagation()}>{children}</div>
-    </div>
-  );
-};
+    if (!isVisible) return null;
+    return (
+      <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4" onClick={onClose}>
+        <div className={`bg-gray-800 border border-gray-700 rounded-xl p-6 sm:p-8 w-full ${maxWidth} flex flex-col`} onClick={e => e.stopPropagation()}>{children}</div>
+      </div>
+    );
+  };
 
 export const Switch = ({ checked, onChange }) => (
     <button type="button" onClick={() => onChange(!checked)} className={`${checked ? 'bg-blue-600' : 'bg-gray-600'} relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0`}>
@@ -96,7 +96,8 @@ export const ProactiveScanResultsModal = ({ opportunities, isVisible, onClose, o
     );
 };
 
-// --- YENİ BİLEŞEN ---
+
+
 export const BulkReanalysisResultModal = ({ results, isVisible, onClose, onConfirmClose }) => {
     if (!isVisible || !results) return null;
     return (

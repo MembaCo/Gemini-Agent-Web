@@ -7,12 +7,12 @@ import { ScannerPage } from './components/ScannerPage'; // YENİ
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 const Toast = ({ message, type, onClose }) => {
-  if (!message) return null;
+    if (!message) return null
   const icons = { success: <CheckCircle className="text-green-400" />, error: <XCircle className="text-red-400" />, warning: <AlertTriangle className="text-yellow-400" />, info: <Info className="text-blue-400" /> };
   const borderColors = { success: 'border-green-500', error: 'border-red-500', warning: 'border-yellow-500', info: 'border-blue-500' };
   useEffect(() => { const timer = setTimeout(onClose, 5000); return () => clearTimeout(timer); }, [onClose]);
   return (
-    <div className={`fixed bottom-5 right-5 bg-gray-800 border-l-4 ${borderColors[type]} text-white p-4 rounded-lg shadow-2xl flex items-center gap-4 z-50 animate-fade-in-up`}>
+    <div className={`fixed bottom-5 right-5 bg-gray-800 border-l-4 ${borderColors[type]} text-white p-4 rounded-lg shadow-2xl flex items-center gap-4 z-[60] animate-fade-in-up`}>
       {icons[type]}<p>{message}</p><button onClick={onClose} className="ml-auto text-gray-500 hover:text-white"><X size={18} /></button>
     </div>
   );
