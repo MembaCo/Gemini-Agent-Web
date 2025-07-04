@@ -39,9 +39,6 @@ def init_db():
         cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, type TEXT NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS strategy_presets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, settings TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         cursor.execute('CREATE TABLE IF NOT EXISTS scanner_candidates (symbol TEXT PRIMARY KEY, source TEXT, timeframe TEXT, indicators TEXT, last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
-        
-        
-        # YENİ: Tarayıcı adayları için yeni tablo
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +56,17 @@ def init_db():
             cursor.execute('ALTER TABLE managed_positions ADD COLUMN pnl REAL DEFAULT 0')
         if 'pnl_percentage' not in columns:
             cursor.execute('ALTER TABLE managed_positions ADD COLUMN pnl_percentage REAL DEFAULT 0')
+            
+        # YENİ: Bailout Exit için sütunlar ekleniyor
+        if 'bailout_armed' not in columns:
+            cursor.execute('ALTER TABLE managed_positions ADD COLUMN bailout_armed BOOLEAN DEFAULT 0')
+        if 'extremum_price' not in columns:
+            cursor.execute('ALTER TABLE managed_positions ADD COLUMN extremum_price REAL DEFAULT 0')
+        # YENİ: AI bailout onayı için sütun
+        if 'bailout_analysis_triggered' not in columns:
+            cursor.execute('ALTER TABLE managed_positions ADD COLUMN bailout_analysis_triggered BOOLEAN DEFAULT 0')
+        logging.info("'managed_positions' tablosuna 'bailout_analysis_triggered' sütunu eklendi.")
+   
             
         cursor.execute("PRAGMA table_info(trade_history)")
         history_columns = [row[1] for row in cursor.fetchall()]
@@ -320,3 +328,39 @@ def update_scanner_candidate(symbol: str, new_indicators: dict):
     finally:
         conn.close()
 
+# YENİ: Bailout durumunu güncellemek için fonksiyonlar
+def arm_bailout_for_position(symbol: str, extremum_price: float):
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE managed_positions SET bailout_armed = 1, extremum_price = ? WHERE symbol = ?", (extremum_price, symbol))
+        conn.commit()
+    finally:
+        conn.close()
+
+def update_extremum_price_for_position(symbol: str, new_extremum_price: float):
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE managed_positions SET extremum_price = ? WHERE symbol = ?", (new_extremum_price, symbol))
+        conn.commit()
+    finally:
+        conn.close()
+
+def set_bailout_analysis_triggered(symbol: str):
+    """Bir pozisyon için bailout analizinin yapıldığını işaretler."""
+    conn = get_db_connection()
+    try:
+        # Bu fonksiyon, pozisyon kâra geçip tekrar zarara girdiğinde sıfırlanmalıdır.
+        # Bu mantık position_manager'da ele alınabilir. Şimdilik sadece set ediyoruz.
+        conn.execute("UPDATE managed_positions SET bailout_analysis_triggered = 1 WHERE symbol = ?", (symbol,))
+        conn.commit()
+    finally:
+        conn.close()
+
+# YENİ: Pozisyon kâra geçtiğinde bailout durumunu sıfırlamak için
+def reset_bailout_status(symbol: str):
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE managed_positions SET bailout_armed = 0, bailout_analysis_triggered = 0, extremum_price = 0 WHERE symbol = ?", (symbol,))
+        conn.commit()
+    finally:
+        conn.close()

@@ -107,8 +107,39 @@ def llm_invoke_with_fallback(prompt: str):
     
     raise Exception("Tüm modeller denendi ancak LLM çağrısı başarılı olamadı.")
 
+def create_bailout_reanalysis_prompt(position: dict, current_price: float, pnl_percentage: float, indicators: dict) -> str:
+    """Zarardaki bir pozisyonun toparlanma anında kapatılıp kapatılmamasını sorgulamak için prompt oluşturur."""
+    side = "Alış (Long)" if position['side'] == "buy" else "Satış (Short)"
+    extremum_price_label = "Gördüğü En Düşük Fiyat" if position['side'] == "buy" else "Gördüğü En Yüksek Fiyat"
+    indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in indicators.items()])
 
-# YENİ: Yeniden eklenen fonksiyon
+    return f"""
+    Sen, soğukkanlı ve tecrübeli bir risk yöneticisisin. Görevin, zarardaki bir pozisyon için kritik bir anda çıkış kararı vermek.
+
+    ## DURUM ANALİZİ:
+    - **Pozisyon:** {position['symbol']} / {side}
+    - **Giriş Fiyatı:** {position['entry_price']}
+    - **Mevcut Durum:** Pozisyon şu anda %{pnl_percentage:.2f} zararda.
+    - **Önemli Gözlem:** Pozisyon, {extremum_price_label} olan {position['extremum_price']} seviyesine kadar geriledikten sonra bir toparlanma göstererek anlık {current_price} fiyatına ulaştı. Bu, zararı azaltmak için bir fırsat olabilir, ancak aynı zamanda daha büyük bir toparlanmanın başlangıcı da olabilir.
+
+    ## GÜNCEL TEKNİK VERİLER ({position['timeframe']}):
+    {indicator_text}
+
+    ## GÖREVİN:
+    Yukarıdaki verileri analiz ederek, bu pozisyon için ŞİMDİ verilecek en mantıklı karar nedir?
+    - **TUT:** Eğer toparlanmanın devam etme potansiyeli yüksekse ve erken çıkış bir fırsat maliyeti yaratacaksa bu kararı ver.
+    - **KAPAT:** Eğer bu yükselişin geçici bir tepki ("dead cat bounce") olduğunu ve düşüşün/yükselişin (pozisyon yönüne göre) devam edeceğini düşünüyorsan, zararı burada kesmek için bu kararı ver.
+
+    ## İSTENEN JSON ÇIKTI FORMATI:
+    Sadece "TUT" veya "KAPAT" kararını ve tek cümlelik gerekçeni içeren bir JSON nesnesi döndür.
+    ```json
+    {{
+      "recommendation": "KARARIN (TUT veya KAPAT)",
+      "reason": "Kararının dayandığı en önemli teknik gerekçe."
+    }}
+    ```
+    """
+
 def create_reanalysis_prompt(position: dict) -> str:
     """Mevcut bir pozisyonu yeniden değerlendirmek için prompt oluşturur."""
     # Bu fonksiyon, LangChain Agent'ından bağımsız olduğu için LangChain araçlarını çağırmaz.

@@ -172,6 +172,9 @@ const settingDescriptions = {
     USE_PARTIAL_TP: "Kısmi Kâr Alma stratejisi aktif edilsin mi?",
     PARTIAL_TP_TARGET_RR: "Kaç R'a ulaşıldığında (riskedilen miktar kadar kâr edildiğinde) kısmi kâr alınacağı.",
     PARTIAL_TP_CLOSE_PERCENT: "Kısmi kâr alınırken pozisyonun yüzde kaçının kapatılacağı.",
+    USE_BAILOUT_EXIT: "Aktifse, belirli bir zarara ulaşan pozisyonlar için 'Kurtarma Çıkışı' stratejisini devreye sokar.",
+    BAILOUT_ARM_LOSS_PERCENT: "Pozisyonun yüzde kaç zarara (-%) ulaştığında 'Kurtarma Çıkışı' özelliğinin tetikte beklemeye başlayacağı.",
+    BAILOUT_RECOVERY_PERCENT: "Özellik devredeyken, fiyatın gördüğü en dip/tepe noktadan yüzde kaç toparlanma yaparsa pozisyonun kapatılacağı.",
     POSITION_CHECK_INTERVAL_SECONDS: "Arka plan görevinin aktif pozisyonları kaç saniyede bir kontrol edeceği.",
     ORPHAN_ORDER_CHECK_INTERVAL_SECONDS: "Pozisyonu kapanmış ama hala açık kalmış emirleri (yetim emir) kontrol etme sıklığı (saniye).",
     POSITION_SYNC_INTERVAL_SECONDS: "Borsadaki pozisyonlarla veritabanını senkronize etme sıklığı (saniye).",
@@ -195,7 +198,9 @@ const settingCategories = [
         'PROACTIVE_SCAN_ENABLED', 'PROACTIVE_SCAN_INTERVAL_SECONDS', 'PROACTIVE_SCAN_AUTO_CONFIRM', 
         'PROACTIVE_SCAN_BLACKLIST', 'PROACTIVE_SCAN_WHITELIST', 'PROACTIVE_SCAN_PREFILTER_ENABLED',
         'PROACTIVE_SCAN_RSI_LOWER', 'PROACTIVE_SCAN_RSI_UPPER', 'PROACTIVE_SCAN_ADX_THRESHOLD',
-        // YENI FILTRELER EKLENDI
+        'USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP', 
+        'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT', 
+        'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT',
         'PROACTIVE_SCAN_USE_VOLATILITY_FILTER', 'PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT',
         'PROACTIVE_SCAN_USE_VOLUME_FILTER', 'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER'
     ]},

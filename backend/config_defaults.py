@@ -39,6 +39,12 @@ default_settings = {
     "PARTIAL_TP_TARGET_RR": 1.0,
     "PARTIAL_TP_CLOSE_PERCENT": 50.0,
 
+    # YENİ: Akıllı Zarar Azaltma (Bailout Exit) Ayarları
+    "USE_BAILOUT_EXIT": True,              # Bu özellik aktif edilsin mi?
+    "BAILOUT_ARM_LOSS_PERCENT": -2.0,      # Pozisyon yüzde kaç zarara ulaşınca bu özellik devreye girsin?
+    "BAILOUT_RECOVERY_PERCENT": 1.0,       # Görülen en dipten yüzde kaç toparlanınca pozisyon kapatılsın?
+    "USE_AI_BAILOUT_CONFIRMATION": True,   # YENİ: Bailout kararını AI'a onaylat. False ise, AI'a sormadan direkt kapatır.
+
     # === OTOMASYON & TARAYICI AYARLARI ===
     "POSITION_CHECK_INTERVAL_SECONDS": 60,
     "ORPHAN_ORDER_CHECK_INTERVAL_SECONDS": 300,

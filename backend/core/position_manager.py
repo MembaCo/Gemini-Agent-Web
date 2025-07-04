@@ -5,7 +5,6 @@ import logging
 import asyncio
 import database
 from core import app_config
-# get_price_with_cache fonksiyonu zaten import edilmişti, kullanımı düzeltiliyor.
 from tools import (
     get_price_with_cache, update_stop_loss_order, execute_trade_order, 
     get_open_positions_from_exchange, get_atr_value, _get_unified_symbol,
@@ -14,6 +13,9 @@ from tools import (
 from tools import exchange as exchange_tools
 from core.trader import close_existing_trade, TradeException
 from notifications import send_telegram_message, format_partial_tp_message
+
+from core import agent
+from tools import get_technical_indicators
 
 
 def _ensure_exchange_is_available():
@@ -94,6 +96,80 @@ async def sync_positions_with_exchange():
 
     await asyncio.to_thread(_blocking_sync)
 
+def handle_bailout_exit(position: dict, current_price: float, pnl_percentage: float):
+    """Yapay Zeka Onaylı Akıllı Zarar Azaltma (Bailout Exit) stratejisini yönetir."""
+    side = position.get("side")
+    bailout_armed = position.get('bailout_armed', False)
+    bailout_analysis_triggered = position.get('bailout_analysis_triggered', False)
+    extremum_price = position.get('extremum_price', 0)
+    
+    # Eğer pozisyon kâra geçtiyse, bailout durumunu sıfırla
+    if pnl_percentage > 0 and bailout_armed:
+        database.reset_bailout_status(position['symbol'])
+        return False
+
+    # 1. Stratejiyi Devreye Sokma (Arming)
+    if not bailout_armed and pnl_percentage < app_config.settings.get('BAILOUT_ARM_LOSS_PERCENT', -2.0):
+        database.arm_bailout_for_position(position['symbol'], current_price)
+        log_msg = f"BAILOUT ARMED: {position['symbol']} pozisyonu {pnl_percentage:.2f}% zararda. Kurtarma çıkışı için bekleniyor."
+        logging.info(log_msg)
+        database.log_event("INFO", "Strategy", log_msg)
+        return False
+
+    # 2. Devrede olan stratejiyi izleme
+    if bailout_armed:
+        if (side == 'buy' and current_price < extremum_price) or \
+           (side == 'sell' and current_price > extremum_price):
+            database.update_extremum_price_for_position(position['symbol'], current_price)
+            extremum_price = current_price
+
+        recovery_perc = app_config.settings.get('BAILOUT_RECOVERY_PERCENT', 1.0) / 100.0
+        recovery_target_price = extremum_price * (1 + recovery_perc) if side == 'buy' else extremum_price * (1 - recovery_perc)
+        
+        recovery_triggered = (side == 'buy' and current_price >= recovery_target_price) or \
+                             (side == 'sell' and current_price <= recovery_target_price)
+
+        # 3. AI Onayını Tetikleme
+        if recovery_triggered and not bailout_analysis_triggered:
+            # AI'a sormadan önce analiz yapıldığını veritabanına işle
+            database.set_bailout_analysis_triggered(position['symbol'])
+
+            # AI onayı istenmiyorsa, direkt kapat
+            if not app_config.settings.get('USE_AI_BAILOUT_CONFIRMATION', True):
+                log_msg = f"BAILOUT TRIGGERED (No AI): {position['symbol']} pozisyonu dipten toparlandı. Direkt kapatılıyor."
+                logging.info(log_msg)
+                database.log_event("SUCCESS", "Strategy", log_msg)
+                close_existing_trade(position['symbol'], close_reason="BAILOUT_EXIT")
+                return True
+
+            # AI onayı isteniyorsa, analiz yap
+            try:
+                logging.info(f"AI BAILOUT CONFIRMATION: {position['symbol']} için AI onayı isteniyor...")
+                indicators = get_technical_indicators(f"{position['symbol']},{position['timeframe']}")
+                if indicators.get('status') != 'success':
+                    logging.warning(f"Bailout AI onayı için {position['symbol']} indikatörleri alınamadı.")
+                    return False
+                
+                prompt = agent.create_bailout_reanalysis_prompt(position, current_price, pnl_percentage, indicators['data'])
+                result = agent.llm_invoke_with_fallback(prompt)
+                parsed_data = agent.parse_agent_response(result.content)
+
+                if parsed_data and parsed_data.get('recommendation') == 'KAPAT':
+                    log_msg = f"AI CONFIRMED BAILOUT: AI, {position['symbol']} pozisyonunun kapatılmasını onayladı. Gerekçe: {parsed_data.get('reason')}"
+                    logging.info(log_msg)
+                    database.log_event("SUCCESS", "Strategy", log_msg)
+                    close_existing_trade(position['symbol'], close_reason="AI_BAILOUT_EXIT")
+                    return True
+                else:
+                    log_msg = f"AI REJECTED BAILOUT: AI, {position['symbol']} pozisyonunun TUTULMASINI tavsiye etti. Gerekçe: {parsed_data.get('reason', 'N/A')}"
+                    logging.info(log_msg)
+                    database.log_event("INFO", "Strategy", log_msg)
+
+            except Exception as e:
+                logging.error(f"Bailout AI onayı sırasında hata ({position['symbol']}): {e}", exc_info=True)
+
+    return False
+
 async def check_all_managed_positions():
     """
     Tüm yönetilen pozisyonları periyodik olarak kontrol eder. Bloklamayı önlemek için
@@ -134,6 +210,9 @@ async def check_all_managed_positions():
                     continue
 
                 # Gelişmiş stratejiler
+                if app_config.settings.get('USE_BAILOUT_EXIT'):
+                    if handle_bailout_exit(dict(position), current_price, pnl_percentage):
+                        continue
                 if app_config.settings.get('USE_PARTIAL_TP') and not position.get('partial_tp_executed'):
                     handle_partial_tp(position, current_price)
                 if app_config.settings.get('USE_TRAILING_STOP_LOSS'):

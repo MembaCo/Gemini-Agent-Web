@@ -36,6 +36,9 @@ class SettingsUpdate(BaseModel):
     USE_PARTIAL_TP: Optional[bool] = None
     PARTIAL_TP_TARGET_RR: Optional[float] = None
     PARTIAL_TP_CLOSE_PERCENT: Optional[float] = None
+    USE_BAILOUT_EXIT: Optional[bool] = None
+    BAILOUT_ARM_LOSS_PERCENT: Optional[float] = None
+    BAILOUT_RECOVERY_PERCENT: Optional[float] = None
     POSITION_CHECK_INTERVAL_SECONDS: Optional[int] = None
     ORPHAN_ORDER_CHECK_INTERVAL_SECONDS: Optional[int] = None
     POSITION_SYNC_INTERVAL_SECONDS: Optional[int] = None
