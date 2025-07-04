@@ -1,74 +1,64 @@
-# ♊ Gemini Trading Agent (Web UI & Self-Hosted)
+<div align="center">
+
+# ♊ Gemini Trading Agent
+
+**AI Destekli, Web Arayüzlü, Self-Hosted Kripto Ticaret Botu**
+
+[GitHub Deposu](https://github.com/MembaCo/Gemini-Agent-Web) | [Kurulum](#-kurulum-ve-çalıştırma) | [Özellikler](#-temel-özellikler)
+
+[![Shield: License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Shield: Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-limegreen.svg)](#-katkıda-bulunma)
+[![Shield: Python](https://img.shields.io/badge/Python-3.11-3776AB.svg?logo=python)](https://www.python.org)
+[![Shield: React](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react)](https://react.dev/)
+
+</div>
 
 **Gemini Trading Agent**, Google'ın güçlü Gemini AI modellerini kullanarak kripto para piyasalarında (Vadeli & Spot) gelişmiş analizler yapan ve işlem gerçekleştiren, tamamen kendi sunucunuzda çalıştırabileceğiniz modern bir bottur.
 
-Kullanıcı dostu ve modern **web arayüzü** sayesinde tüm operasyonlarınızı kolayca yönetebilir, performansınızı anlık takip edebilir, stratejileri geriye dönük test edebilir ve bot ayarlarını hızlıca güncelleyebilirsiniz.
-
----
-
-## ✨ Temel Özellikler
-
-### 🖥️ Web Tabanlı Kontrol Paneli
-- **React** ile geliştirilmiş hızlı ve duyarlı arayüz
-- Anlık P&L takibi ve genel performans istatistikleri
-- Kümülatif kâr/zararı gösteren **interaktif zaman çizelgesi**
-- Aktif pozisyonları yönetme, geçmiş işlemleri inceleme & işlem grafiklerini görüntüleme
-
-### 📢 Canlı Olay Paneli
-- Pozisyon açılışı, kapanışı, tarayıcı aktiviteleri ve sistem uyarıları gibi tüm önemli olayları anlık olarak takip edin
-
-### 🤖 Akıllı Fırsat Tarayıcı
-- **Gelişmiş Filtreleme:** Temel teknik göstergeler (RSI, ADX), **volatilite (ATR)** ve **hacim** filtreleriyle ön eleme yaparak sadece en potansiyelli adaylarda yapay zeka analizini devreye alır.
-- **Maliyet Tasarrufu:** Akıllı filtreleme sayesinde gereksiz API çağrılarını ve maliyetleri önemli ölçüde azaltır.
-
-### 📈 Strateji Backtest Motoru
-- Farklı sembol, tarih aralığı & parametrelerle geçmişe dönük test
-- Strateji ayarlarını ön ayar olarak kaydedip tekrar kullanılabilir
-
-### ⚙️ Dinamik ve Veritabanı Tabanlı Ayarlar
-- Tüm strateji & risk yönetimi ayarlarını (Kaldıraç, Risk Yüzdesi, Kara Liste, **Bailout Stratejisi** vb.) arayüzden anlık güncelleyin.
-- Tüm ayarlar kalıcı olarak veritabanında saklanır.
-
-### 🧠 Yapay Zeka Destekli Analiz
-- **Google Gemini 1.5 Flash/Pro** ile derinlemesine piyasa analizleri.
-- **Dominant Sinyal Analizi:** Çoklu Zaman Aralığı (MTA) analizlerinde, trendi daha güçlü olan zaman dilimini otomatik belirleyerek AI'ı yönlendirir ve daha tutarlı kararlar alınmasını sağlar.
-- **Yedek Model Sistemi:** Model kotası dolarsa otomatik diğer modele geçiş.
-
-### 🛡️ Gelişmiş Risk Yönetimi
-- **Dinamik Pozisyon Boyutlandırma:** Her işlemde sermayenin belirli bir yüzdesi riske edilir.
-- **Akıllı Zarar Azaltma (Bailout Exit):** Zarardaki bir pozisyonun, stop-loss olmadan önce gösterdiği geçici toparlanma anında, **isteğe bağlı yapay zeka onayı** ile kapatılarak kayıpların minimize edilmesini sağlar.
-- **İz Süren Zarar Durdur (Trailing Stop-Loss)**
-- **Kısmi Kâr Alma:** Hedefe ulaşıldığında pozisyonun bir kısmını otomatik kapatır.
-
-### 🐳 Kolay Kurulum (Self-Hosted & Umbrel)
-- **Docker** ile tek komutla kendi sunucunuza veya **Umbrel** gibi platformlara kurulum.
-
-### 💬 Telegram Entegrasyonu
-- Telegram komutları ile botu kontrol etme, analiz alma ve anlık bildirimler.
-
----
-
-## 🖼️ Ekran Görüntüleri
+Kullanıcı dostu ve modern web arayüzü sayesinde tüm operasyonlarınızı kolayca yönetebilir, performansınızı anlık takip edebilir, stratejileri geriye dönük test edebilir ve bot ayarlarını hızlıca güncelleyebilirsiniz.
 
 <div align="center">
 
-<img src="./screenshots/gallery-1.png" width="300" alt="Image of a phone showing the App">
-<img src="./screenshots/gallery-2.png" width="300" alt="Image of a phone showing the App">
-<img src="./screenshots/gallery-3.png" width="300" alt="Image of a phone showing the App">
+> Proje arayüzüne ait ekran görüntülerini buraya ekleyebilirsiniz.
+
 </div>
 
----
+## Neden Gemini Trading Agent?
+
+Bu proje, aşağıdaki hedeflere sahip kullanıcılar için tasarlanmıştır:
+
+- 🏦 **Otomasyon:** Ticaret stratejilerini 7/24 çalışan bir sistemle otomatize etmek.
+- 🧠 **Yapay Zeka Avantajı:** Google Gemini'ın gelişmiş analiz yetenekleriyle piyasada avantaj sağlamak.
+- 🎯 **Veriye Dayalı Kararlar:** Duygusal kararlar yerine, teknik göstergeler ve AI analiziyle işlem yapmak.
+- 👻 **Veri Mahremiyeti:** Tüm strateji, ayar ve işlem verilerini kendi kontrolündeki bir sunucuda (self-hosted) tutmak.
+- ⚙️ **Esnek Kontrol:** Web arayüzü üzerinden tüm risk yönetimi ve strateji parametrelerini anlık olarak değiştirebilmek.
+- 📈 **Strateji Geliştirme:** Backtest motoru ile farklı fikirleri geçmiş veriler üzerinde risksiz bir şekilde test etmek.
+
+## ✨ Temel Özellikler
+
+- ✅ **Web Tabanlı Kontrol Paneli:** React ile geliştirilmiş hızlı ve duyarlı arayüz ile anlık P&L takibi, interaktif grafikler ve canlı olay akışı.
+- ✅ **Gelişmiş Risk Yönetimi:**
+    - **Dinamik Pozisyon Boyutlandırma:** Her işlemde sermayenin belirli bir yüzdesini riske atar.
+    - **Akıllı Zarar Azaltma (Bailout Exit):** Zarardaki pozisyonları, dipten toparlanma anlarında yapay zeka onayı ile kapatarak kayıpları minimize eder.
+    - **İz Süren Zarar Durdur (Trailing Stop-Loss)** ve **Kısmi Kâr Alma (Partial TP)**.
+- ✅ **Yapay Zeka Destekli Analiz:**
+    - **Google Gemini 1.5 Flash/Pro** ile derinlemesine piyasa analizleri.
+    - **Dominant Sinyal Analizi:** Çoklu zaman dilimli analizlerde, trendi güçlü olan periyodu AI'a bildirerek daha tutarlı kararlar alınmasını sağlar.
+- ✅ **Akıllı Fırsat Tarayıcı:**
+    - Potansiyel işlem fırsatlarını **volatilite (ATR)** ve **hacim** gibi gelişmiş filtrelerle ön elemeye tabi tutar.
+    - Sadece umut vadeden adayları AI analizine göndererek maliyetleri düşürür.
+- ✅ **Strateji Backtest Motoru:** Farklı piyasa koşullarında strateji performansını ölçmek için kullanılır.
+- ✅ **Dinamik ve Veritabanı Tabanlı Ayarlar:** Tüm bot ayarları arayüzden anlık olarak güncellenebilir ve kalıcı olarak saklanır.
+- ✅ **Telegram Entegrasyonu:** Anlık bildirimler ve temel bot komutları için Telegram desteği.
 
 ## 🛠️ Teknoloji Yığını
 
-| Katman      | Teknoloji                                      |
-| ----------- | ---------------------------------------------- |
-| Backend     | Python, FastAPI, LangChain, CCXT, Pandas-TA, APScheduler, asyncio |
-| Frontend    | React, Vite, Tailwind CSS, Chart.js, Lightweight Charts |
-| Veritabanı  | SQLite                                        |
-| Dağıtım     | Docker, Docker Compose                         |
-
----
+| Katman | Teknoloji |
+| :--- | :--- |
+| **Backend** | Python, FastAPI, LangChain, CCXT, Pandas-TA, APScheduler, asyncio |
+| **Frontend** | React, Vite, Tailwind CSS, Chart.js, Lightweight Charts |
+| **Veritabanı** | SQLite |
+| **Dağıtım** | Docker, Docker Compose |
 
 ## 🚀 Kurulum ve Çalıştırma
 
@@ -77,21 +67,17 @@ Kullanıcı dostu ve modern **web arayüzü** sayesinde tüm operasyonlarınız�
 ### 1. Projeyi Klonlayın
 
 ```bash
-git clone https://github.com/MembaCo/Gemini-Agent-Web.git
+git clone [https://github.com/MembaCo/Gemini-Agent-Web.git](https://github.com/MembaCo/Gemini-Agent-Web.git)
 cd Gemini-Agent-Web
-```
 
 ### 2. Ortam Değişkenlerini Ayarlayın
-
-`backend/` dizininde `.env.example` dosyasını kopyalayın veya yeni bir `.env` dosyası oluşturun:
+backend/ dizininde .env.example dosyasını kopyalayarak yeni bir .env dosyası oluşturun:
 
 ```bash
 cp backend/.env.example backend/.env
-```
+Oluşturduğunuz .env dosyasını bir metin editörü ile açarak ZORUNLU alanları doldurun:
 
-`.env` dosyasını aşağıdaki gibi doldurun:
-
-```env
+```bash
 # ZORUNLU AYARLAR
 BINANCE_API_KEY="YOUR_BINANCE_API_KEY"
 BINANCE_SECRET_KEY="YOUR_BINANCE_SECRET_KEY"
@@ -105,37 +91,31 @@ TELEGRAM_ENABLED=True
 TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
 TELEGRAM_CHAT_ID="YOUR_TELEGRAM_CHAT_ID"
 USE_TESTNET=False
-LANGCHAIN_TRACING_V2=false
-LANGCHAIN_API_KEY=""
-```
 
-> Güvenli şifre hash’i oluşturmak için:
-> ```bash
-> python3 backend/hash_password.py 'sizin_guvenli_sifreniz'
-> ```
 
-### 3. Uygulamayı Çalıştırın
+**Önemli: Güvenli bir şifre hash'i oluşturmak için projenin ana dizinindeyken aşağıdaki komutu çalıştırın ve çıktıyı .env dosyasına yapıştırın:**
+
+```bash
+python3 backend/hash_password.py 'sizin_guvenli_sifreniz'
+3. Uygulamayı Başlatın
+Projenin ana dizinindeyken aşağıdaki komutu çalıştırın:
 
 ```bash
 docker-compose up --build
-```
+Bu komut, hem backend hem de frontend servislerini kurup başlatacaktır.
 
-Bu komut ile backend (API sunucusu) ve frontend (web arayüzü) başlatılır.
-
----
 
 ## 🖥️ Kullanım
+### Uygulama başarıyla başladıktan sonra tarayıcınızdan http://localhost:8080 adresine gidin.
 
-1. Tarayıcınızdan [http://localhost:8080](http://localhost:8080) adresine gidin.
-2. `.env` dosyasında belirlediğiniz **ADMIN_USERNAME** ve şifreniz ile giriş yapın.
-3. Dashboard üzerinden botu izleyin, analiz yapın veya backtest işlemlerini başlatın.
-4. Tüm bot ayarlarını sağ üstteki **Ayarlar (⚙️)** ikonundan anlık olarak değiştirebilirsiniz.
+.env dosyasında belirlediğiniz kullanıcı adı ve şifre ile giriş yapın.
 
----
+Dashboard üzerinden botu izleyin, manuel analiz yapın veya backtest işlemlerini başlatın.
 
-## 📂 Proje Yapısı
+Tüm bot ayarlarını sağ üstteki Ayarlar (⚙️) ikonundan anlık olarak değiştirebilirsiniz.
 
-```
+```bash
+📂 Proje Yapısı
 Gemini-Agent-Web/
 ├── backend/        # Python FastAPI sunucusu ve bot mantığı
 │   ├── api/        # API endpoint'leri
@@ -147,25 +127,13 @@ Gemini-Agent-Web/
 ├── data/           # Kalıcı veriler (ör: trades.db SQLite)
 ├── docker-compose.yml
 └── README.md
-```
-
----
 
 ## ⚠️ Risk Uyarısı
-
-> **Uyarı:** Bu yazılım finansal piyasalarda işlem yapmak için geliştirilmiştir. Kripto para ticareti yüksek risk içerir ve sermayenizin bir kısmını veya tamamını kaybetmenize neden olabilir. Yazılım tarafından yapılan analizler veya işlemler yatırım tavsiyesi değildir. Tüm sorumluluk kullanıcıya aittir. Canlı işlem açmadan önce riskleri anladığınızdan emin olun.
-
----
+### Uyarı: Bu yazılım finansal piyasalarda işlem yapmak için geliştirilmiştir. Kripto para ticareti yüksek risk içerir ve sermayenizin bir kısmını veya tamamını kaybetmenize neden olabilir. Yazılım tarafından yapılan analizler veya işlemler yatırım tavsiyesi değildir. Tüm sorumluluk kullanıcıya aittir. Canlı işlem açmadan önce riskleri anladığınızdan emin olun.
 
 ## 🤝 Katkıda Bulunma
-
-Katkı yapmak ister misiniz?  
-Bir [issue](https://github.com/MembaCo/Gemini-Agent-Web/issues) açabilir veya pull request gönderebilirsiniz. Her türlü öneri ve geliştirmeye açığız!
-
----
+### Katkı yapmak ister misiniz?
+### Bir issue açabilir veya pull request gönderebilirsiniz. Her türlü öneri ve geliştirmeye açığız!
 
 ## 📄 Lisans
-
-Bu proje **MIT Lisansı** ile lisanslanmıştır. Detaylar için [LICENSE](LICENSE) dosyasına bakın.
-
----
+### Bu proje MIT Lisansı ile lisanslanmıştır. Detaylar için LICENSE dosyasına bakın.
