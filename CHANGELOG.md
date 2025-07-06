@@ -1,4 +1,12 @@
-Bu projede yapılan tüm önemli değişiklikler bu dosyada belgelenmektedir.
+# Değişiklik Günlüğü
+...
+---
+### [4.4.3] - 2025-07-06 - Pozisyonların Ters Yöne Dönme Hatası Düzeltildi
+
+Bu sürüm, stop-loss veya manuel kapatma sonrası pozisyonların yanlışlıkla ters yönde yeniden açılmasına neden olan kritik bir mantık hatasını gidermektedir.
+
+✅ **Düzeltildi (Fixed)**
+- **KRİTİK: Pozisyonların Tersine Dönme (Flip) Hatası:** Stop-loss veya manuel kapatma gibi senaryolarda gönderilen piyasa emirlerinin, pozisyonu kapatmak yerine ters yönde yeni bir pozisyon açması hatası giderildi. Tüm kapatma emirlerine, borsaya emrin sadece mevcut pozisyonu azaltabileceğini bildiren `reduceOnly: true` parametresinin eklenmesi sağlandı. Bu, botun kararlılığını temelden etkileyen bir düzeltmedir.
 
 ---
 ### [4.4.2] - 2025-07-06 - Kök Neden Analizi ve Zamanlama Düzeltmeleri

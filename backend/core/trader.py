@@ -94,11 +94,18 @@ def close_existing_trade(symbol: str, close_reason: str = "MANUAL"):
     if not position_to_close:
         raise TradeException(f"Veritabanında yönetilen '{symbol}' pozisyonu bulunamadı.")
     
+    # Kapatma emri göndermeden önce o sembole ait tüm bekleyen SL/TP emirlerini iptal et
     cancel_all_open_orders(symbol)
     
     close_side = 'sell' if position_to_close['side'] == 'buy' else 'buy'
     
-    result = execute_trade_order(symbol=symbol, side=close_side, amount=position_to_close['amount'])
+    # --- DÜZELTME: is_closing_order=True parametresi eklendi ---
+    result = execute_trade_order(
+        symbol=symbol, 
+        side=close_side, 
+        amount=position_to_close['amount'],
+        is_closing_order=True
+    )
     
     if result.get("status") == "success":
         closed_pos = database.remove_position(symbol)
@@ -107,8 +114,6 @@ def close_existing_trade(symbol: str, close_reason: str = "MANUAL"):
             
             if close_price is None:
                 logging.warning(f"{symbol} için kapanış fiyatı alınamadı, PNL hesaplanamıyor.")
-                # Alternatif olarak anlık fiyatı çekebiliriz, ama bu daha az doğru olur.
-                # Şimdilik PNL'i 0 kabul edebilir veya loglayıp geçebiliriz.
                 pnl = 0
             else:
                  pnl = (close_price - closed_pos['entry_price']) * closed_pos.get('initial_amount', closed_pos['amount']) if closed_pos['side'] == 'buy' else (closed_pos['entry_price'] - close_price) * closed_pos.get('initial_amount', closed_pos['amount'])
@@ -123,6 +128,7 @@ def close_existing_trade(symbol: str, close_reason: str = "MANUAL"):
             logging.info(f"Pozisyon başarıyla kapatıldı ve geçmişe kaydedildi: {symbol} @ {close_price}")
             return {"status": "success", "message": f"Pozisyon '{symbol}' başarıyla kapatıldı."}
         else:
+            # Bu durum artık yaşanmamalı ama bir güvenlik önlemi olarak kalabilir
             raise TradeException(f"Pozisyon borsada kapatıldı ancak veritabanından silinemedi: {symbol}")
     else:
         error_msg = f"Pozisyon kapatılamadı. Borsa yanıtı: {result.get('message')}"

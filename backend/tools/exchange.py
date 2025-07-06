@@ -219,8 +219,8 @@ def get_technical_indicators(symbol_and_timeframe: str) -> dict:
         return {"status": "error", "message": f"Beklenmedik bir hata oluştu: {str(e)}"}
 
 
-def execute_trade_order(symbol: str, side: str, amount: float, price: float = None, stop_loss: float = None, take_profit: float = None, leverage: float = None) -> dict:
-    """İşlem emri gönderir."""
+def execute_trade_order(symbol: str, side: str, amount: float, price: float = None, stop_loss: float = None, take_profit: float = None, leverage: float = None, is_closing_order: bool = False) -> dict:
+    """İşlem emri gönderir. Kapatma emirleri için 'reduceOnly' parametresini destekler."""
     from core import app_config
     if not exchange: 
         return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
@@ -247,26 +247,36 @@ def execute_trade_order(symbol: str, side: str, amount: float, price: float = No
         order_type = app_config.settings.get('DEFAULT_ORDER_TYPE', 'LIMIT').lower()
         order = None
         
+        # --- YENİ: Kapatma emri için özel parametreler ---
+        params = {}
+        if is_closing_order and is_futures_market:
+            params['reduceOnly'] = True
+            logging.info(f"KAPATMA EMRİ: {symbol} için 'reduceOnly' parametresi True olarak ayarlandı.")
+
         if order_type == 'limit' and formatted_price:
-            order = exchange.create_limit_order(request_symbol, side, float(formatted_amount), float(formatted_price))
+            order = exchange.create_limit_order(request_symbol, side, float(formatted_amount), float(formatted_price), params)
         else:
-            order = exchange.create_market_order(request_symbol, side, float(formatted_amount))
+            order = exchange.create_market_order(request_symbol, side, float(formatted_amount), params)
             
         fill_price = order.get('average') or order.get('price')
         if not fill_price:
             time.sleep(1)
+            # DÜZELTME: Sadece ilgili emir ID'sine ait işlemi sorgula
             trades = exchange.fetch_my_trades(request_symbol, limit=1)
             fill_price = trades[0]['price'] if trades else _fetch_price_natively(unified_symbol)
             
-        if stop_loss and take_profit and is_futures_market:
+        # Pozisyon açılışında SL/TP emirleri gönderiliyorsa, is_closing_order false olmalı.
+        if stop_loss and take_profit and is_futures_market and not is_closing_order:
             opposite = 'sell' if side == 'buy' else 'buy'
             time.sleep(0.5)
+            sl_params = {'stopPrice': stop_loss, 'reduceOnly': True}
+            tp_params = {'stopPrice': take_profit, 'reduceOnly': True}
             try: 
-                exchange.create_order(request_symbol, 'STOP_MARKET', opposite, float(formatted_amount), None, {'stopPrice': stop_loss, 'reduceOnly': True})
+                exchange.create_order(request_symbol, 'STOP_MARKET', opposite, float(formatted_amount), None, sl_params)
             except Exception as sl_e: 
                 logging.error(f"SL emri gönderilemedi ({request_symbol}): {sl_e}")
             try: 
-                exchange.create_order(request_symbol, 'TAKE_PROFIT_MARKET', opposite, float(formatted_amount), None, {'stopPrice': take_profit, 'reduceOnly': True})
+                exchange.create_order(request_symbol, 'TAKE_PROFIT_MARKET', opposite, float(formatted_amount), None, tp_params)
             except Exception as tp_e: 
                 logging.error(f"TP emri gönderilemedi ({request_symbol}): {tp_e}")
             
