@@ -1,6 +1,13 @@
-# Değişiklik Günlüğü
-
 Bu projede yapılan tüm önemli değişiklikler bu dosyada belgelenmektedir.
+
+---
+### [4.4.2] - 2025-07-06 - Kök Neden Analizi ve Zamanlama Düzeltmeleri
+
+Bu sürüm, önceki versiyonlarda tespit edilen "Hayalet Pozisyon" ve senkronizasyon hatalarının altında yatan iki ana nedeni ortadan kaldırarak sisteme tam kararlılık getirmeyi hedefler.
+
+✅ **Düzeltildi (Fixed)**
+- **KRİTİK: Zaman Damgası (`recvWindow`) Hatası Giderildi:** Sunucu saati ile Binance sunucuları arasındaki olası zaman farkından kaynaklanan ve API isteklerinin reddedilmesine yol açan `-1021: Timestamp for this request is outside of the recvWindow` hatası, `ccxt`'nin zaman senkronizasyonu (`adjustForTime`) özelliği etkinleştirilerek tamamen giderildi. Bu, senkronizasyon hatalarının birincil nedenini ortadan kaldırır.
+- **KRİTİK: Bağlantı Havuzu (Connection Pool) Hatası Giderildi:** Uygulamanın, özellikle yoğun anlarda, API'ye çok sayıda istek gönderdiğinde aldığı `Connection pool is full` uyarısı, bağlantı havuzu limiti artırılarak çözüldü. Bu, isteklerin başarısız olma olasılığını azaltır ve genel sistem performansını artırır.
 
 ---
 ### [4.4.1] - 2025-07-05 - Kritik Senkronizasyon ve Stabilite Düzeltmeleri

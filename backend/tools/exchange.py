@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 from langchain.tools import tool
 from tenacity import retry, stop_after_attempt, wait_exponential
 from pathlib import Path
+# YENİ: requests ve HTTPAdapter import ediliyor
+import requests
+from requests.adapters import HTTPAdapter
 
 from core import cache_manager 
 from .utils import _get_unified_symbol, _parse_symbol_timeframe_input, str_to_bool
@@ -20,7 +23,6 @@ load_dotenv(dotenv_path=dotenv_path)
 
 exchange = None
 
-# ... (initialize_exchange ve _load_markets_with_retry aynı) ...
 @retry(wait=wait_exponential(multiplier=2, min=4, max=30), stop=stop_after_attempt(3))
 def _load_markets_with_retry(exchange_instance):
     logging.info("Borsa piyasa verileri yükleniyor (deneniyor)...")
@@ -44,14 +46,26 @@ def initialize_exchange(market_type: str):
 
     logging.info(f"API Anahtarları bulundu. Testnet Modu: {use_testnet}, Piyasa Tipi: {market_type}")
     
+    # --- YENİ DÜZELTME BAŞLANGICI ---
+    # Genişletilmiş bağlantı havuzuna sahip özel bir session oluştur
+    session = requests.Session()
+    adapter = HTTPAdapter(pool_connections=50, pool_maxsize=50)
+    session.mount('https://', adapter)
+
     config_data = {
         "apiKey": api_key, "secret": secret_key,
         "options": {
             "defaultType": market_type.lower(),
             "warnOnFetchOpenOrdersWithoutSymbol": False,
+            # Timestamp (recvWindow) hatasını önlemek için zaman senkronizasyonunu etkinleştir
+            "adjustForTime": True,
         },
-        "enableRateLimit": True, 'timeout': 30000,
+        "enableRateLimit": True, 
+        'timeout': 30000,
+        # ccxt'nin özel session'ı kullanmasını sağla
+        'session': session,
     }
+    # --- YENİ DÜZELTME SONU ---
 
     exchange = ccxt.binance(config_data)
     
@@ -67,6 +81,7 @@ def initialize_exchange(market_type: str):
         exchange = None
         raise e
 
+# ... dosyanın geri kalanı aynı kalabilir ...
 def fetch_open_orders(symbol: str = None) -> list:
     """Borsadaki tüm açık emirleri veya belirtilen sembol için olanları çeker."""
     if not exchange:
