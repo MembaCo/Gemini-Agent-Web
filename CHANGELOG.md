@@ -3,6 +3,15 @@
 Bu projede yapılan tüm önemli değişiklikler bu dosyada belgelenmektedir.
 
 ---
+### [4.4.1] - 2025-07-05 - Kritik Senkronizasyon ve Stabilite Düzeltmeleri
+
+Bu sürüm, botun en kritik hatalarından biri olan "Hayalet Pozisyon" sorununu çözmeye ve sistemin genel çalışma kararlılığını artırmaya odaklanmıştır.
+
+✅ **Düzeltildi (Fixed)**
+- **KRİTİK: "Hayalet Pozisyon" Senkronizasyon Hatası:** Botun, anlık ağ sorunları nedeniyle borsadaki gerçek pozisyonları "hayalet" olarak algılayıp veritabanından silmesine neden olan temel senkronizasyon mantığı hatası giderildi. Pozisyon senkronizasyon fonksiyonu (`sync_positions_with_exchange`), borsadan veri almayı birkaç kez deneyen daha dayanıklı bir yapıya kavuşturuldu. Bu düzeltme, "Insufficient Funds" gibi zincirleme hataların ana nedenini ortadan kaldırır.
+- **Daha Anlaşılır Hata Loglaması:** Senkronizasyon sorunları yaşandığında, loglar ve Telegram bildirimleri daha kritik ve bilgilendirici olacak şekilde güncellendi.
+
+---
 ### [4.4.0] - 2025-07-04 - Gelişmiş Risk Yönetimi ve Yapay Zeka Kararlılığı
 
 Bu sürüm, botun risk yönetimi kabiliyetlerini kökten değiştiren yeni özellikler eklerken, bir dizi kritik çalışma zamanı hatasını gidererek sistemi tamamen kararlı hale getirmeye odaklanmıştır.

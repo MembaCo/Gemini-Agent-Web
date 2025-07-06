@@ -3,6 +3,7 @@
 
 import logging
 import asyncio
+import time # Tenacity için eklendi
 import database
 from core import app_config
 from tools import (
@@ -13,6 +14,7 @@ from tools import (
 from tools import exchange as exchange_tools
 from core.trader import close_existing_trade, TradeException
 from notifications import send_telegram_message, format_partial_tp_message
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 from core import agent
 from tools import get_technical_indicators
@@ -25,10 +27,17 @@ def _ensure_exchange_is_available():
         return False
     return True
 
+# --- YENİ: Tekrarlı deneme mantığı eklendi ---
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2), reraise=True)
+async def _get_positions_with_retry():
+    """Borsadan pozisyonları 3 kez deneme ile çeker."""
+    logging.info("Borsadan açık pozisyonlar çekiliyor (deneniyor)...")
+    return await asyncio.to_thread(get_open_positions_from_exchange)
+
 async def sync_positions_with_exchange():
     """
     Uygulama başlangıcında ve periyodik olarak çalışarak borsadaki açık pozisyonlarla yerel
-    veritabanını senkronize eder. Bu fonksiyon bloklayıcı olabileceğinden thread'de çalıştırılır.
+    veritabanını senkronize eder. Hatalara karşı daha dayanıklı hale getirildi.
     """
     def _blocking_sync():
         if not _ensure_exchange_is_available():
@@ -37,7 +46,9 @@ async def sync_positions_with_exchange():
         
         logging.info(">>> Pozisyon Senkronizasyonu Başlatılıyor...")
         try:
-            exchange_positions_raw = get_open_positions_from_exchange()
+            # DÜZELTME: Pozisyonları anlık ağ hatalarına karşı 3 kez deneyerek al
+            exchange_positions_raw = asyncio.run(_get_positions_with_retry())
+            
             db_positions = database.get_all_positions()
             exchange_positions_map = {_get_unified_symbol(p['symbol']): p for p in exchange_positions_raw}
             db_symbols_set = {p['symbol'] for p in db_positions}
@@ -45,10 +56,11 @@ async def sync_positions_with_exchange():
             # Veritabanında var, borsada yok (Hayalet Pozisyon)
             ghost_symbols = db_symbols_set - set(exchange_positions_map.keys())
             for symbol in ghost_symbols:
-                logging.warning(f"Hayalet Pozisyon Bulundu: '{symbol}' veritabanında var ama borsada yok. Veritabanından kaldırılıyor...")
+                # DÜZELTME: Bu logu daha kritik bir seviyeye taşıdık
+                logging.critical(f"KRİTİK SENKRONİZASYON SORUNU: '{symbol}' pozisyonu veritabanında var ama borsada yok. Pozisyon veritabanından temizleniyor. Lütfen durumu manuel kontrol edin.")
                 database.remove_position(symbol)
-                database.log_event("WARNING", "Sync", f"Hayalet pozisyon bulundu ve silindi: '{symbol}' veritabanında vardı ama borsada yoktu.")
-                send_telegram_message(f"⚠️ **Senkronizasyon Uyarısı** ⚠️\n`{symbol}` pozisyonu veritabanında bulunuyordu ancak borsada kapalıydı. Veritabanı temizlendi.")
+                database.log_event("CRITICAL", "Sync", f"Hayalet pozisyon bulundu ve silindi: '{symbol}' veritabanında vardı ama borsada yoktu. Bu durum, anlık API hatasından kaynaklanmış olabilir.")
+                send_telegram_message(f"‼️ **Kritik Senkronizasyon Sorunu** ‼️\n`{symbol}` pozisyonu veritabanında bulunuyordu ancak borsada kapalı görünüyordu. Veritabanı temizlendi, lütfen borsadaki pozisyonlarınızı manuel olarak kontrol edin.")
 
             # Borsada var, veritabanında yok (Yönetilmeyen Pozisyon)
             unmanaged_symbols = set(exchange_positions_map.keys()) - db_symbols_set
