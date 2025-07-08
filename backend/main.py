@@ -31,6 +31,22 @@ from telegram_bot import create_telegram_app
 
 scheduler = AsyncIOScheduler()
 
+# YENİ: Versiyonu dosyadan okuyan fonksiyon
+def get_app_version():
+    """
+    Proje ana dizinindeki VERSION dosyasından uygulama versiyonunu okur.
+    """
+    try:
+        # __file__ bu dosyanın yolunu verir, '..' ile bir üst dizine çıkarız.
+        version_file_path = os.path.join(os.path.dirname(__file__), '..', 'VERSION')
+        with open(version_file_path, 'r') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        logging.warning("VERSION dosyası bulunamadı. Varsayılan versiyon '0.0.0-dev' kullanılıyor.")
+        return "0.0.0-dev"
+
+APP_VERSION = get_app_version()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Uygulama yaşam döngüsü yöneticisi."""
@@ -85,8 +101,6 @@ async def lifespan(app: FastAPI):
     logging.info("Uygulama kapatılıyor (lifespan)...")
     database.log_event("INFO", "Application", "Uygulama kapatılıyor...")
     
-    # DÜZELTME: Kapatma kontrolü, 'is_running' yerine 'running' özelliği ile yapılıyor.
-    # Bu, 'AttributeError' hatasını çözer ve uygulamanın kararlı bir şekilde kapanmasını sağlar.
     if hasattr(app.state, "telegram_app") and app.state.telegram_app.running:
         await app.state.telegram_app.updater.stop()
         await app.state.telegram_app.stop()
@@ -96,8 +110,15 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
     logging.info("Arka plan görevleri (Scheduler) kapatıldı.")
 
+# GÜNCELLENDİ: FastAPI uygulaması artık versiyonu dinamik olarak alıyor
+app = FastAPI(title="Gemini Trading Agent API", version=APP_VERSION, lifespan=lifespan)
 
-app = FastAPI(title="Gemini Trading Agent API", version="4.5.4", lifespan=lifespan)
+# YENİ: Uygulama versiyonunu döndüren API endpoint'i
+@app.get("/api/app-version", tags=["Application"])
+async def get_version_endpoint():
+    """Uygulamanın mevcut versiyonunu döndürür."""
+    return {"version": APP_VERSION}
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 api_router = APIRouter(prefix="/api")

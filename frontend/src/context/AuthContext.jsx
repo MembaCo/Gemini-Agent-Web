@@ -66,7 +66,9 @@ export const AuthProvider = ({ children }) => {
         }
     };
     
-    // Temel API fonksiyonları
+    // YENİ: Uygulama versiyonunu çeken fonksiyon
+    const fetchAppVersion = useCallback(() => apiFetch('/app-version'), [apiFetch]);
+    
     const fetchData = useCallback(() => apiFetch('/dashboard/stats'), [apiFetch]);
     const fetchPositions = useCallback(() => apiFetch('/positions/'), [apiFetch]);
     const fetchSettings = useCallback(() => apiFetch('/settings/'), [apiFetch]);
@@ -77,14 +79,10 @@ export const AuthProvider = ({ children }) => {
     const refreshPnl = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/refresh-pnl`, { method: 'POST' }), [apiFetch]);
     const reanalyzePosition = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/reanalyze`, { method: 'POST' }), [apiFetch]);
     const fetchEvents = useCallback(() => apiFetch('/dashboard/events'), [apiFetch]);
-    
-    // === YENİ === Toplu işlem API fonksiyonları
     const closeAllPositions = useCallback(() => apiFetch('/positions/close-all', { method: 'POST' }), [apiFetch]);
     const closeProfitablePositions = useCallback(() => apiFetch('/positions/close-profitable', { method: 'POST' }), [apiFetch]);
     const closeLosingPositions = useCallback(() => apiFetch('/positions/close-losing', { method: 'POST' }), [apiFetch]);
     const reanalyzeAllPositions = useCallback(() => apiFetch('/positions/reanalyze-all', { method: 'POST' }), [apiFetch]);
-
-    // Diğerleri...
     const runBacktest = useCallback((params) => apiFetch('/backtest/run', { method: 'POST', body: JSON.stringify(params) }), [apiFetch]);
     const fetchChartData = useCallback((params) => {const query = new URLSearchParams(params).toString();return apiFetch(`/charts/ohlcv?${query}`);},[apiFetch]);
     const fetchPresets = useCallback(() => apiFetch('/presets/'), [apiFetch]);
@@ -97,9 +95,10 @@ export const AuthProvider = ({ children }) => {
 
     const value = {
         isAuthenticated, login, logout, toast, showToast, setToast,
+        fetchAppVersion, // YENİ
         fetchData, fetchPositions, fetchSettings, saveSettings, runAnalysis, openPosition,
         closePosition, refreshPnl, reanalyzePosition, fetchEvents,
-        closeAllPositions, closeProfitablePositions, closeLosingPositions, reanalyzeAllPositions, // Yeni fonksiyonlar eklendi
+        closeAllPositions, closeProfitablePositions, closeLosingPositions, reanalyzeAllPositions,
         runBacktest, fetchChartData, fetchPresets, savePreset, deletePreset,
         runInteractiveScan, runProactiveScan, fetchScannerCandidates, refreshScannerCandidate,
     };
@@ -108,7 +107,6 @@ export const AuthProvider = ({ children }) => {
         <AuthContext.Provider value={value}>
             {children}
             {isAuthenticated && (
-                // DEĞİŞİKLİK: z-50 -> z-30
                 <button onClick={logout} className="fixed top-5 right-5 bg-red-600/80 hover:bg-red-600 text-white p-2 rounded-full shadow-lg z-30 group transition-transform hover:scale-110">
                     <Power size={20} />
                 </button>

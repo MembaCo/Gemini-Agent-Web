@@ -1,18 +1,19 @@
 # .github/workflows/docker-publish.yml
 name: Docker Image CI
 
-# Bu iş akışı ne zaman çalışacak?
 on:
   push:
-    tags: [ "v4.3.1" ] # Sadece 'v*' ile başlayan tag'ler için çalışır.
-    branches: [ "main" ] # Sadece 'main' branch'ine kod gönderildiğinde çalışır.
+    # DÜZELTME: Artık 'v' ile başlayan herhangi bir etiket (tag) gönderildiğinde çalışır.
+    # Örnek: git tag v4.7.0 && git push origin v4.7.0
+    tags:
+      - 'v*'
 
 jobs:
   build_and_push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # İmajı GHCR'ye göndermek için gerekli izin.
+      packages: write
 
     steps:
       - name: Checkout repository
@@ -22,12 +23,28 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # YENİ: Docker imajı için meta verileri (etiketler, versiyon) hazırla
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          # Etiketleme kuralları:
+          # - Git etiketinden (örn: v1.2.3 -> 1.2.3) versiyonu al
+          # - Her zaman 'latest' etiketini ekle
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # GÜNCELLENDİ: Build and push adımı meta verileri kullanacak şekilde güncellendi
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ghcr.io/membaco/gemini-agent-web:latest # İmajın adı burada belirleniyor.
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
