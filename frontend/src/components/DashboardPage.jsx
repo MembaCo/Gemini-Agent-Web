@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Filler, Legend, ArcElement, BarElement } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { Settings, Search, Play, Loader2, Cpu, Terminal, Zap, Wallet, ShieldX, DollarSign, Brain, AlertTriangle, RefreshCw, Bot, X, Save, HelpCircle, ChevronsUpDown } from 'lucide-react';
+import { Settings, Search, Play, Loader2, Cpu, Terminal, Zap, Wallet, ShieldX, DollarSign, Brain, AlertTriangle, RefreshCw, Bot, X, Save, HelpCircle, ChevronsUpDown, ChevronDown, BotMessageSquare, Wrench, Shield, CandlestickChart, Telescope } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import TradeHistory from './TradeHistory';
@@ -12,15 +12,6 @@ import { Modal, Switch, TooltipWrapper, AnalysisResultModal, ReanalysisResultMod
 ChartJS.register( CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Filler, Legend, ArcElement, BarElement );
 
 // --- YARDIMCI BİLEŞENLER VE FONKSİYONLAR ---
-
-const formatHoldingPeriod = (seconds) => {
-    if (isNaN(seconds) || seconds < 1) return `0 saniye`;
-    if (seconds < 60) return `${Math.round(seconds)} saniye`;
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    if (hours < 1) return `${minutes} dakika`;
-    return `${hours} saat, ${minutes % 60} dakika`;
-};
 
 const Header = ({ appVersion, onSettingsClick, isLoading }) => (
     <header className="mb-8 flex justify-between items-center">
@@ -152,76 +143,140 @@ const ActivePositions = ({ positions, onClose, onRefresh, onReanalyze, refreshin
     </div>
 );
 
-const settingDescriptions = {
-    GEMINI_MODEL: "Ana analizler için kullanılacak varsayılan Gemini AI modeli.",
-    GEMINI_MODEL_FALLBACK_ORDER: "Bir modelin kotası dolduğunda denenecek yedek modellerin sıralı listesi (virgülle ayırın).",
-    LIVE_TRADING: "Aktifse, bot gerçek para ile işlem yapar. Değilse, sadece simülasyon yapar.",
-    VIRTUAL_BALANCE: "Simülasyon modunda (LIVE_TRADING kapalıyken) kullanılacak olan sanal bakiye (USDT).",
-    DEFAULT_MARKET_TYPE: "İşlemlerin yapılacağı piyasa tipi. 'future' (vadeli) veya 'spot'.",
-    DEFAULT_ORDER_TYPE: "Varsayılan emir tipi. 'LIMIT' veya 'MARKET'.",
-    USE_MTA_ANALYSIS: "Manuel ve proaktif analizlerde Çoklu Zaman Aralığı (MTA) analizi kullanılsın mı?",
-    MTA_TREND_TIMEFRAME: "MTA için ana trendin belirleneceği üst zaman aralığı (örn: 4h, 1d).",
-    LEVERAGE: "Vadeli işlemlerde kullanılacak kaldıraç oranı.",
-    RISK_PER_TRADE_PERCENT: "Her bir işlemde toplam sermayenin yüzde kaçının riske edileceği.",
-    MAX_CONCURRENT_TRADES: "Aynı anda açık olabilecek maksimum pozisyon sayısı.",
-    USE_ATR_FOR_SLTP: "Zarar Durdur (SL) ve Kâr Al (TP) seviyelerini belirlemek için ATR göstergesi kullanılsın mı?",
-    ATR_MULTIPLIER_SL: "Stop-Loss mesafesini belirlemek için ATR değerinin çarpılacağı katsayı.",
-    RISK_REWARD_RATIO_TP: "Kâr Al (TP) seviyesinin, riske (SL mesafesi) göre oranı.",
-    USE_SCALP_EXIT: "Aktifse, pozisyonlar aşağıda belirlenen kâr yüzdesine ulaştığında diğer kuralları beklemeden hemen kapatılır. Volatil altcoinler için hızlı kâr almayı sağlar.",
-    SCALP_EXIT_PROFIT_PERCENT: "Hızlı Kâr Alma (Scalp Exit) özelliğinin tetikleneceği kâr yüzdesi.",
-    USE_TRAILING_STOP_LOSS: "İz Süren Zarar Durdurma stratejisi aktif edilsin mi?",
-    TRAILING_STOP_ACTIVATION_PERCENT: "Pozisyonun yüzde kaç kâra geçtiğinde Trailing SL'nin devreye gireceği.",
-    USE_PARTIAL_TP: "Kısmi Kâr Alma stratejisi aktif edilsin mi?",
-    PARTIAL_TP_TARGET_RR: "Kaç R'a ulaşıldığında (riskedilen miktar kadar kâr edildiğinde) kısmi kâr alınacağı.",
-    PARTIAL_TP_CLOSE_PERCENT: "Kısmi kâr alınırken pozisyonun yüzde kaçının kapatılacağı.",
-    USE_BAILOUT_EXIT: "Aktifse, belirli bir zarara ulaşan pozisyonlar için 'Kurtarma Çıkışı' stratejisini devreye sokar.",
-    BAILOUT_ARM_LOSS_PERCENT: "Pozisyonun yüzde kaç zarara (-%) ulaştığında 'Kurtarma Çıkışı' özelliğinin tetikte beklemeye başlayacağı.",
-    BAILOUT_RECOVERY_PERCENT: "Özellik devredeyken, fiyatın gördüğü en dip/tepe noktadan yüzde kaç toparlanma yaparsa pozisyonun kapatılacağı.",
-    POSITION_CHECK_INTERVAL_SECONDS: "Arka plan görevinin aktif pozisyonları kaç saniyede bir kontrol edeceği.",
-    ORPHAN_ORDER_CHECK_INTERVAL_SECONDS: "Pozisyonu kapanmış ama hala açık kalmış emirleri (yetim emir) kontrol etme sıklığı (saniye).",
-    POSITION_SYNC_INTERVAL_SECONDS: "Borsadaki pozisyonlarla veritabanını senkronize etme sıklığı (saniye).",
-    TELEGRAM_ENABLED: "Telegram bildirimleri aktif edilsin mi? (.env dosyasında token ve chat_id ayarlanmalıdır).",
-    PROACTIVE_SCAN_ENABLED: "Uygulama başladığında Proaktif Tarayıcı arka plan görevi çalışsın mı?",
-    PROACTIVE_SCAN_INTERVAL_SECONDS: "Proaktif Tarayıcının iki tarama döngüsü arasında kaç saniye bekleyeceğini belirler.",
-    PROACTIVE_SCAN_AUTO_CONFIRM: "Tarayıcı bir fırsat bulduğunda, kullanıcı onayı olmadan otomatik olarak işlem açar. Yüksek risklidir.",
-    PROACTIVE_SCAN_BLACKLIST: "Bu listedeki coinler (virgülle ayırın) taramalara asla dahil edilmez.",
-    PROACTIVE_SCAN_WHITELIST: "Bu listedeki coinler (virgülle ayırın) her tarama döngüsünde mutlaka analize dahil edilir.",
-    PROACTIVE_SCAN_USE_VOLATILITY_FILTER: "ATR kullanarak düşük volatiliteye sahip piyasalardaki sinyalleri filtreler.",
-    PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT: "Bir sinyalin geçerli olması için ATR değerinin, anlık fiyatın en az yüzde kaçı olması gerektiğini belirtir.",
-    PROACTIVE_SCAN_USE_VOLUME_FILTER: "İşleme giriş sinyalinin, artan bir işlem hacmiyle teyit edilip edilmeyeceğini belirler.",
-    PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER: "Son mumun hacminin, geçmiş hacim ortalamasının kaç katı olması gerektiğini belirtir."
+// ===================================================================================
+// YENİ: AYARLAR MODALİ İÇİN YENİDEN DÜZENLENMİŞ VERİ YAPILARI VE BİLEŞENLER
+// ===================================================================================
+
+const settingLabelsAndDescriptions = {
+    GEMINI_MODEL: { label: "Ana AI Modeli", description: "Ana analizler için kullanılacak varsayılan Gemini AI modeli." },
+    GEMINI_MODEL_FALLBACK_ORDER: { label: "Yedek Model Sırası", description: "Bir modelin kotası dolduğunda denenecek yedek modellerin sıralı listesi (virgülle ayırın)." },
+    LIVE_TRADING: { label: "Canlı Ticaret Modu", description: "Aktifse, bot gerçek para ile işlem yapar. Değilse, sadece simülasyon yapar." },
+    VIRTUAL_BALANCE: { label: "Sanal Bakiye (USDT)", description: "Simülasyon modunda (LIVE_TRADING kapalıyken) kullanılacak olan sanal bakiye." },
+    DEFAULT_MARKET_TYPE: { label: "Piyasa Tipi", description: "İşlemlerin yapılacağı piyasa tipi. 'future' (vadeli) veya 'spot'." },
+    DEFAULT_ORDER_TYPE: { label: "Varsayılan Emir Tipi", description: "Varsayılan emir tipi. 'LIMIT' veya 'MARKET'." },
+    USE_MTA_ANALYSIS: { label: "Çoklu Zaman Aralığı (MTA) Analizi", description: "Manuel ve proaktif analizlerde Çoklu Zaman Aralığı (MTA) analizi kullanılsın mı?" },
+    MTA_TREND_TIMEFRAME: { label: "MTA Ana Trend Zaman Aralığı", description: "MTA için ana trendin belirleneceği üst zaman aralığı (örn: 4h, 1d)." },
+    LEVERAGE: { label: "Kaldıraç Oranı", description: "Vadeli işlemlerde kullanılacak kaldıraç oranı." },
+    RISK_PER_TRADE_PERCENT: { label: "İşlem Başına Risk (%)", description: "Her bir işlemde toplam sermayenin yüzde kaçının riske edileceği." },
+    MAX_CONCURRENT_TRADES: { label: "Maksimum Eşzamanlı İşlem", description: "Aynı anda açık olabilecek maksimum pozisyon sayısı." },
+    USE_ATR_FOR_SLTP: { label: "ATR ile SL/TP Belirleme", description: "Zarar Durdur (SL) ve Kâr Al (TP) seviyelerini belirlemek için ATR göstergesi kullanılsın mı?" },
+    ATR_MULTIPLIER_SL: { label: "ATR Çarpanı (SL)", description: "Stop-Loss mesafesini belirlemek için ATR değerinin çarpılacağı katsayı." },
+    RISK_REWARD_RATIO_TP: { label: "Risk/Ödül Oranı (TP)", description: "Kâr Al (TP) seviyesinin, riske (SL mesafesi) göre oranı." },
+    USE_SCALP_EXIT: { label: "Hızlı Kâr Alma (Scalp)", description: "Aktifse, pozisyonlar aşağıda belirlenen kâr yüzdesine ulaştığında diğer kuralları beklemeden hemen kapatılır." },
+    SCALP_EXIT_PROFIT_PERCENT: { label: "Hızlı Kâr Alma Hedefi (%)", description: "Hızlı Kâr Alma (Scalp Exit) özelliğinin tetikleneceği kâr yüzdesi." },
+    USE_TRAILING_STOP_LOSS: { label: "İz Süren Zarar Durdurma", description: "İz Süren Zarar Durdurma stratejisi aktif edilsin mi?" },
+    TRAILING_STOP_ACTIVATION_PERCENT: { label: "İz Süren SL Aktivasyon Kârı (%)", description: "Pozisyonun yüzde kaç kâra geçtiğinde Trailing SL'nin devreye gireceği." },
+    USE_PARTIAL_TP: { label: "Kısmi Kâr Alma", description: "Kısmi Kâr Alma stratejisi aktif edilsin mi?" },
+    PARTIAL_TP_TARGET_RR: { label: "Kısmi TP Hedefi (R)", description: "Kaç R'a ulaşıldığında (riskedilen miktar kadar kâr edildiğinde) kısmi kâr alınacağı." },
+    PARTIAL_TP_CLOSE_PERCENT: { label: "Kısmi TP Kapatma Oranı (%)", description: "Kısmi kâr alınırken pozisyonun yüzde kaçının kapatılacağı." },
+    USE_BAILOUT_EXIT: { label: "Akıllı Zarar Azaltma (Bailout)", description: "Aktifse, belirli bir zarara ulaşan pozisyonlar için 'Kurtarma Çıkışı' stratejisini devreye sokar." },
+    BAILOUT_ARM_LOSS_PERCENT: { label: "Bailout Aktivasyon Zararı (%)", description: "Pozisyonun yüzde kaç zarara (-%) ulaştığında 'Kurtarma Çıkışı' özelliğinin tetikte beklemeye başlayacağı." },
+    BAILOUT_RECOVERY_PERCENT: { label: "Bailout Toparlanma Oranı (%)", description: "Özellik devredeyken, fiyatın gördüğü en dip/tepe noktadan yüzde kaç toparlanma yaparsa pozisyonun kapatılacağı." },
+    POSITION_CHECK_INTERVAL_SECONDS: { label: "Pozisyon Kontrol Sıklığı (sn)", description: "Arka plan görevinin aktif pozisyonları kaç saniyede bir kontrol edeceği." },
+    ORPHAN_ORDER_CHECK_INTERVAL_SECONDS: { label: "Yetim Emir Kontrol Sıklığı (sn)", description: "Pozisyonu kapanmış ama hala açık kalmış emirleri (yetim emir) kontrol etme sıklığı (saniye)." },
+    POSITION_SYNC_INTERVAL_SECONDS: { label: "Pozisyon Senkronizasyon Sıklığı (sn)", description: "Borsadaki pozisyonlarla veritabanını senkronize etme sıklığı (saniye)." },
+    TELEGRAM_ENABLED: { label: "Telegram Bildirimleri", description: "Telegram bildirimleri aktif edilsin mi? (.env dosyasında token ve chat_id ayarlanmalıdır)." },
+    PROACTIVE_SCAN_ENABLED: { label: "Proaktif Tarama Aktif", description: "Uygulama başladığında Proaktif Tarayıcı arka plan görevi çalışsın mı?" },
+    PROACTIVE_SCAN_INTERVAL_SECONDS: { label: "Tarama Sıklığı (sn)", description: "Proaktif Tarayıcının iki tarama döngüsü arasında kaç saniye bekleyeceğini belirler." },
+    PROACTIVE_SCAN_AUTO_CONFIRM: { label: "Otomatik İşlem Onayı", description: "Tarayıcı bir fırsat bulduğunda, kullanıcı onayı olmadan otomatik olarak işlem açar. Yüksek risklidir." },
+    PROACTIVE_SCAN_BLACKLIST: { label: "Kara Liste (Coinler)", description: "Bu listedeki coinler (virgülle ayırın) taramalara asla dahil edilmez." },
+    PROACTIVE_SCAN_WHITELIST: { label: "Beyaz Liste (Coinler)", description: "Bu listedeki coinler (virgülle ayırın) her tarama döngüsünde mutlaka analize dahil edilir." },
+    PROACTIVE_SCAN_USE_VOLATILITY_FILTER: { label: "Volatilite Filtresi", description: "ATR kullanarak düşük volatiliteye sahip piyasalardaki sinyalleri filtreler." },
+    PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT: { label: "Min. Volatilite Eşiği (%)", description: "Bir sinyalin geçerli olması için ATR değerinin, anlık fiyatın en az yüzde kaçı olması gerektiğini belirtir." },
+    PROACTIVE_SCAN_USE_VOLUME_FILTER: { label: "Hacim Teyit Filtresi", description: "İşleme giriş sinyalinin, artan bir işlem hacmiyle teyit edilip edilmeyeceğini belirler." },
+    PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER: { label: "Hacim Teyit Çarpanı", description: "Son mumun hacminin, geçmiş hacim ortalamasının kaç katı olması gerektiğini belirtir." }
 };
 
 const settingCategories = [
-    { title: 'Yapay Zeka ve Model Ayarları', keys: ['GEMINI_MODEL', 'GEMINI_MODEL_FALLBACK_ORDER', 'USE_MTA_ANALYSIS', 'MTA_TREND_TIMEFRAME'] },
-    { title: 'Genel Ticaret ve Risk Yönetimi', keys: ['LIVE_TRADING', 'VIRTUAL_BALANCE', 'DEFAULT_MARKET_TYPE', 'DEFAULT_ORDER_TYPE', 'LEVERAGE', 'MAX_CONCURRENT_TRADES', 'RISK_PER_TRADE_PERCENT'] },
-    { title: 'Zarar Durdurma ve Kâr Alma Stratejileri', keys: ['USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP','USE_SCALP_EXIT', 'SCALP_EXIT_PROFIT_PERCENT', 'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT', 'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT'] },
-    { title: 'Proaktif Tarayıcı Ayarları', keys: [
-        'PROACTIVE_SCAN_ENABLED', 'PROACTIVE_SCAN_INTERVAL_SECONDS', 'PROACTIVE_SCAN_AUTO_CONFIRM',
-        'PROACTIVE_SCAN_BLACKLIST', 'PROACTIVE_SCAN_WHITELIST', 'PROACTIVE_SCAN_PREFILTER_ENABLED',
-        'PROACTIVE_SCAN_RSI_LOWER', 'PROACTIVE_SCAN_RSI_UPPER', 'PROACTIVE_SCAN_ADX_THRESHOLD',
-        'USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP',
-        'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT',
-        'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT',
-        'PROACTIVE_SCAN_USE_VOLATILITY_FILTER', 'PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT',
-        'PROACTIVE_SCAN_USE_VOLUME_FILTER', 'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER'
-    ]},
-    { title: 'Otomasyon ve Arka Plan Görevleri', keys: ['POSITION_CHECK_INTERVAL_SECONDS', 'ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 'POSITION_SYNC_INTERVAL_SECONDS', 'TELEGRAM_ENABLED'] },
+    { title: 'Yapay Zeka Ayarları', icon: <BotMessageSquare className="text-sky-400" />, keys: ['GEMINI_MODEL', 'GEMINI_MODEL_FALLBACK_ORDER', 'USE_MTA_ANALYSIS', 'MTA_TREND_TIMEFRAME'] },
+    { title: 'Genel Ticaret & Risk Yönetimi', icon: <Shield className="text-green-400" />, keys: ['LIVE_TRADING', 'VIRTUAL_BALANCE', 'DEFAULT_MARKET_TYPE', 'DEFAULT_ORDER_TYPE', 'LEVERAGE', 'MAX_CONCURRENT_TRADES', 'RISK_PER_TRADE_PERCENT'] },
+    { title: 'Kâr & Zarar Stratejileri', icon: <CandlestickChart className="text-amber-400" />, keys: ['USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP', 'USE_SCALP_EXIT', 'SCALP_EXIT_PROFIT_PERCENT', 'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT', 'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT', 'USE_BAILOUT_EXIT', 'BAILOUT_ARM_LOSS_PERCENT', 'BAILOUT_RECOVERY_PERCENT'] },
+    { title: 'Proaktif Tarayıcı Ayarları', icon: <Telescope className="text-indigo-400" />, keys: ['PROACTIVE_SCAN_ENABLED', 'PROACTIVE_SCAN_INTERVAL_SECONDS', 'PROACTIVE_SCAN_AUTO_CONFIRM', 'PROACTIVE_SCAN_BLACKLIST', 'PROACTIVE_SCAN_WHITELIST', 'PROACTIVE_SCAN_USE_VOLATILITY_FILTER', 'PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT', 'PROACTIVE_SCAN_USE_VOLUME_FILTER', 'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER'] },
+    { title: 'Sistem & Otomasyon', icon: <Wrench className="text-gray-400" />, keys: ['POSITION_CHECK_INTERVAL_SECONDS', 'ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 'POSITION_SYNC_INTERVAL_SECONDS', 'TELEGRAM_ENABLED'] },
 ];
 
-const SettingsModal = ({ isVisible, onClose, settingsData, onSave, onSettingsChange }) => {
-    if (!isVisible) return null;
-    const renderInput = (key, value) => {
-        const type = typeof value;
+const SettingItem = ({ settingKey, value, onSettingsChange }) => {
+    const { label, description } = settingLabelsAndDescriptions[settingKey] || { label: settingKey, description: 'Açıklama bulunamadı.' };
+    const type = typeof value;
+
+    const renderInput = () => {
         const selectOptions = { "GEMINI_MODEL": ["gemini-1.5-flash", "gemini-1.5-pro"], "DEFAULT_MARKET_TYPE": ["future", "spot"], "DEFAULT_ORDER_TYPE": ["LIMIT", "MARKET"], "MTA_TREND_TIMEFRAME": ["15m", "1h", "4h", "1d"] };
-        if (key in selectOptions) { return <select value={value} onChange={e => onSettingsChange(key, e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500">{selectOptions[key].map(o => <option key={o} value={o}>{o}</option>)}</select>; }
-        if (type === 'boolean') return <Switch checked={value} onChange={(checked) => onSettingsChange(key, checked)} />;
-        if (type === 'number') return <input type="number" step="0.1" value={value} onChange={e => onSettingsChange(key, parseFloat(e.target.value) || 0)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-28 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />;
-        if (Array.isArray(value)) return <input type="text" placeholder="Değerleri virgülle ayırın..." value={value.join(', ')} onChange={e => onSettingsChange(key, e.target.value.split(',').map(s => s.trim().toUpperCase()).filter(s => s))} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />;
-        return <input type="text" value={value} onChange={e => onSettingsChange(key, e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />;
+        // DÜZELTME: 'key' yerine 'settingKey' kullanılıyor.
+        if (settingKey in selectOptions) { 
+            return <select value={value} onChange={e => onSettingsChange(settingKey, e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {selectOptions[settingKey].map(o => <option key={o} value={o}>{o}</option>)}
+            </select>;
+        }
+        if (type === 'boolean') return <Switch checked={value} onChange={(checked) => onSettingsChange(settingKey, checked)} />;
+        if (type === 'number') return <input type="number" step="0.1" value={value} onChange={e => onSettingsChange(settingKey, parseFloat(e.target.value) || 0)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-28 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />;
+        if (Array.isArray(value)) return <input type="text" placeholder="Değerleri virgülle ayırın..." value={value.join(', ')} onChange={e => onSettingsChange(settingKey, e.target.value.split(',').map(s => s.trim().toUpperCase()).filter(s => s))} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />;
+        return <input type="text" value={value} onChange={e => onSettingsChange(settingKey, e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />;
     };
-    return ( <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-3xl"><div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white flex items-center gap-2"><Settings /> Uygulama Ayarları</h2><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700"><X size={24} /></button></div><div className="space-y-6 max-h-[60vh] overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">{settingCategories.map(category => ( <div key={category.title}><h3 className="text-md font-semibold text-sky-400 mb-3 border-b border-sky-400/20 pb-2">{category.title}</h3><div className="space-y-4">{Object.keys(settingsData).filter(key => category.keys.includes(key)).sort().map(key => ( <div key={key} className="flex justify-between items-center"><div className="flex items-center gap-2"><label className="text-gray-300 text-sm font-medium">{key}</label><TooltipWrapper content={settingDescriptions[key] || 'Açıklama bulunamadı.'}><HelpCircle size={14} className="text-gray-500 cursor-help" /></TooltipWrapper></div><div className="min-w-[200px]">{renderInput(key, settingsData[key])}</div></div> ))}</div></div> ))}</div><div className="mt-6 flex justify-end"><button onClick={onSave} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md flex items-center gap-2"><Save size={18}/>Ayarları Kaydet</button></div></Modal> );
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+            <div>
+                <label className="text-gray-200 font-medium">{label}</label>
+                <p className="text-xs text-gray-400 mt-1">{description}</p>
+            </div>
+            <div className="flex justify-start md:justify-end">
+                {renderInput()}
+            </div>
+        </div>
+    );
 };
+
+const SettingsModal = ({ isVisible, onClose, settingsData, onSave, onSettingsChange }) => {
+    const [openCategory, setOpenCategory] = useState(settingCategories[0]?.title || null);
+
+    if (!isVisible) return null;
+
+    return (
+        <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-4xl">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2"><Settings /> Uygulama Ayarları</h2>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700"><X size={24} /></button>
+            </div>
+            <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-4 -mr-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+                {settingCategories.map(category => (
+                    <div key={category.title} className="border border-gray-700 rounded-lg overflow-hidden">
+                        <button
+                            onClick={() => setOpenCategory(openCategory === category.title ? null : category.title)}
+                            className="w-full flex justify-between items-center p-4 bg-gray-800 hover:bg-gray-700/50 transition-colors"
+                        >
+                            <div className="flex items-center gap-3">
+                                {React.cloneElement(category.icon, { size: 20 })}
+                                <span className="font-semibold text-white">{category.title}</span>
+                            </div>
+                            <ChevronDown className={`transform transition-transform ${openCategory === category.title ? 'rotate-180' : ''}`} />
+                        </button>
+                        {openCategory === category.title && (
+                            <div className="p-4 md:p-6 bg-gray-900/50 space-y-6">
+                                {Object.keys(settingsData)
+                                    .filter(key => category.keys.includes(key))
+                                    .sort()
+                                    .map(key => (
+                                        <SettingItem
+                                            key={key}
+                                            settingKey={key}
+                                            value={settingsData[key]}
+                                            onSettingsChange={onSettingsChange}
+                                        />
+                                    ))}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+            <div className="mt-8 flex justify-end">
+                <button onClick={onSave} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md flex items-center gap-2">
+                    <Save size={18} />Ayarları Kaydet ve Uygula
+                </button>
+            </div>
+        </Modal>
+    );
+};
+
 
 // --- ANA DASHBOARD BİLEŞENİ ---
 export const DashboardPage = () => {
@@ -269,25 +324,16 @@ export const DashboardPage = () => {
         } catch (err) { showToast(err.message, 'error'); } finally { if (showLoadingSpinner) setIsLoading(false); }
     }, [fetchData, fetchPositions, fetchSettings, fetchEvents, showToast, isDataLoaded]);
 
-    // === GÜNCELLENMİŞ useEffect BÖLÜMÜ ===
     useEffect(() => {
-        loadAllData(true); // Sayfa ilk yüklendiğinde verileri çek
-
+        loadAllData(true);
         let intervalId = null;
-
-        // Ayarlar penceresi kapalıysa periyodik yenilemeyi başlat
         if (!isSettingsModalVisible) {
             intervalId = setInterval(() => loadAllData(false), 5000);
         }
-
-        // Bileşen unmount edildiğinde veya isSettingsModalVisible değiştiğinde interval'ı temizle
         return () => {
-            if (intervalId) {
-                clearInterval(intervalId);
-            }
+            if (intervalId) clearInterval(intervalId);
         };
-    }, [loadAllData, isSettingsModalVisible]); // isSettingsModalVisible'i bağımlılık dizisine ekle
-    // === GÜNCELLEME SONU ===
+    }, [loadAllData, isSettingsModalVisible]);
 
     useEffect(() => { setFilteredHistory(tradeHistory.filter(t => t.symbol.toLowerCase().includes(searchQuery.toLowerCase()))); }, [searchQuery, tradeHistory]);
 
