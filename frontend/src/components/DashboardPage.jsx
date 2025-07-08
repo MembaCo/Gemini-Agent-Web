@@ -153,10 +153,10 @@ const ActivePositions = ({ positions, onClose, onRefresh, onReanalyze, refreshin
 );
 
 const settingDescriptions = {
-    // YENI AYARLARIN AÇIKLAMALARI EKLENDI
     GEMINI_MODEL: "Ana analizler için kullanılacak varsayılan Gemini AI modeli.",
     GEMINI_MODEL_FALLBACK_ORDER: "Bir modelin kotası dolduğunda denenecek yedek modellerin sıralı listesi (virgülle ayırın).",
     LIVE_TRADING: "Aktifse, bot gerçek para ile işlem yapar. Değilse, sadece simülasyon yapar.",
+    VIRTUAL_BALANCE: "Simülasyon modunda (LIVE_TRADING kapalıyken) kullanılacak olan sanal bakiye (USDT).",
     DEFAULT_MARKET_TYPE: "İşlemlerin yapılacağı piyasa tipi. 'future' (vadeli) veya 'spot'.",
     DEFAULT_ORDER_TYPE: "Varsayılan emir tipi. 'LIMIT' veya 'MARKET'.",
     USE_MTA_ANALYSIS: "Manuel ve proaktif analizlerde Çoklu Zaman Aralığı (MTA) analizi kullanılsın mı?",
@@ -192,14 +192,14 @@ const settingDescriptions = {
 
 const settingCategories = [
     { title: 'Yapay Zeka ve Model Ayarları', keys: ['GEMINI_MODEL', 'GEMINI_MODEL_FALLBACK_ORDER', 'USE_MTA_ANALYSIS', 'MTA_TREND_TIMEFRAME'] },
-    { title: 'Genel Ticaret ve Risk Yönetimi', keys: ['LIVE_TRADING', 'DEFAULT_MARKET_TYPE', 'DEFAULT_ORDER_TYPE', 'LEVERAGE', 'MAX_CONCURRENT_TRADES', 'RISK_PER_TRADE_PERCENT'] },
+    { title: 'Genel Ticaret ve Risk Yönetimi', keys: ['LIVE_TRADING', 'VIRTUAL_BALANCE', 'DEFAULT_MARKET_TYPE', 'DEFAULT_ORDER_TYPE', 'LEVERAGE', 'MAX_CONCURRENT_TRADES', 'RISK_PER_TRADE_PERCENT'] },
     { title: 'Zarar Durdurma ve Kâr Alma Stratejileri', keys: ['USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP', 'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT', 'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT'] },
     { title: 'Proaktif Tarayıcı Ayarları', keys: [
-        'PROACTIVE_SCAN_ENABLED', 'PROACTIVE_SCAN_INTERVAL_SECONDS', 'PROACTIVE_SCAN_AUTO_CONFIRM', 
+        'PROACTIVE_SCAN_ENABLED', 'PROACTIVE_SCAN_INTERVAL_SECONDS', 'PROACTIVE_SCAN_AUTO_CONFIRM',
         'PROACTIVE_SCAN_BLACKLIST', 'PROACTIVE_SCAN_WHITELIST', 'PROACTIVE_SCAN_PREFILTER_ENABLED',
         'PROACTIVE_SCAN_RSI_LOWER', 'PROACTIVE_SCAN_RSI_UPPER', 'PROACTIVE_SCAN_ADX_THRESHOLD',
-        'USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP', 
-        'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT', 
+        'USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP',
+        'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT',
         'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT',
         'PROACTIVE_SCAN_USE_VOLATILITY_FILTER', 'PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT',
         'PROACTIVE_SCAN_USE_VOLUME_FILTER', 'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER'
@@ -241,7 +241,7 @@ export const DashboardPage = () => {
     const [selectedTradeForChart, setSelectedTradeForChart] = useState(null);
     const [reanalysisResult, setReanalysisResult] = useState(null);
     const [proactiveOpportunities, setProactiveOpportunities] = useState([]);
-    const [openingTradeSymbol, setOpeningTradeSymbol] = useState(null); 
+    const [openingTradeSymbol, setOpeningTradeSymbol] = useState(null);
     const [refreshingSymbol, setRefreshingSymbol] = useState(null);
     const [analyzingSymbol, setAnalyzingSymbol] = useState(null);
     const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
@@ -251,7 +251,7 @@ export const DashboardPage = () => {
     const [isGroupActionLoading, setIsGroupActionLoading] = useState(false);
 
     const { showToast, fetchData, fetchPositions, fetchSettings, saveSettings, fetchEvents, runAnalysis, runProactiveScan, openPosition, closePosition, reanalyzePosition, refreshPnl, ...auth } = useAuth();
-    
+
     const loadAllData = useCallback(async (showLoadingSpinner = false) => {
         if (showLoadingSpinner && !isDataLoaded) setIsLoading(true);
         try {
@@ -267,7 +267,26 @@ export const DashboardPage = () => {
         } catch (err) { showToast(err.message, 'error'); } finally { if (showLoadingSpinner) setIsLoading(false); }
     }, [fetchData, fetchPositions, fetchSettings, fetchEvents, showToast, isDataLoaded]);
 
-    useEffect(() => { loadAllData(true); const interval = setInterval(() => loadAllData(false), 5000); return () => clearInterval(interval); }, [loadAllData]);
+    // === GÜNCELLENMİŞ useEffect BÖLÜMÜ ===
+    useEffect(() => {
+        loadAllData(true); // Sayfa ilk yüklendiğinde verileri çek
+
+        let intervalId = null;
+
+        // Ayarlar penceresi kapalıysa periyodik yenilemeyi başlat
+        if (!isSettingsModalVisible) {
+            intervalId = setInterval(() => loadAllData(false), 5000);
+        }
+
+        // Bileşen unmount edildiğinde veya isSettingsModalVisible değiştiğinde interval'ı temizle
+        return () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+        };
+    }, [loadAllData, isSettingsModalVisible]); // isSettingsModalVisible'i bağımlılık dizisine ekle
+    // === GÜNCELLEME SONU ===
+
     useEffect(() => { setFilteredHistory(tradeHistory.filter(t => t.symbol.toLowerCase().includes(searchQuery.toLowerCase()))); }, [searchQuery, tradeHistory]);
 
     const handleAnalysis = useCallback(async ({ symbol, timeframe }) => { setIsAnalyzing(true); showToast(`${symbol} için analiz başlatıldı...`, 'info'); try { const result = await runAnalysis({ symbol, timeframe }); setAnalysisResult(result); } catch (err) { showToast(err.message, 'error'); } finally { setIsAnalyzing(false); } }, [runAnalysis, showToast]);

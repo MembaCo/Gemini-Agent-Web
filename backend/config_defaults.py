@@ -15,6 +15,8 @@ default_settings = {
 
 # === CANLI İŞLEM AYARI ===
     "LIVE_TRADING": True,
+    # YENİ: Simülasyon modu için sanal bakiye ayarı
+    "VIRTUAL_BALANCE": 10000.0,
 
     # === TEMEL STRATEJİ AYARLARI ===
     "USE_MTA_ANALYSIS": True,

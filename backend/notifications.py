@@ -27,11 +27,15 @@ def send_telegram_message(message: str):
     except requests.RequestException as e:
         logging.error(f"Telegram API'sine bağlanırken bir ağ hatası oluştu: {e}")
 
-def format_open_position_message(pos_details: dict) -> str:
+def format_open_position_message(pos_details: dict, is_simulation: bool = False) -> str:
     symbol = pos_details.get('symbol', 'N/A').replace('/', r'\/')
     side_emoji = "📈" if pos_details.get('side') == 'buy' else "📉"
+    title = f"*{side_emoji} YENİ POZİSYON AÇILDI *`{symbol}`"
+    if is_simulation:
+        title = f"*[SİMÜLASYON] {title}"
+    
     return (
-        f"*{side_emoji} YENİ POZİSYON AÇILDI *`{symbol}`\n\n"
+        f"{title}\n\n"
         f"➡️ *Yön:* `{pos_details.get('side', 'N/A').upper()}`\n"
         f"💰 *Giriş Fiyatı:* `{pos_details.get('entry_price', 0):.4f}`\n"
         f"📦 *Miktar:* `{pos_details.get('amount', 0):.4f}`\n"
@@ -40,11 +44,15 @@ def format_open_position_message(pos_details: dict) -> str:
         f"🎯 *Take-Profit:* `{pos_details.get('take_profit', 0):.4f}`"
     )
 
-def format_close_position_message(closed_pos: dict, pnl: float, status: str) -> str:
+def format_close_position_message(closed_pos: dict, pnl: float, status: str, is_simulation: bool = False) -> str:
     symbol = closed_pos.get('symbol', 'N/A').replace('/', r'\/')
     pnl_emoji = "✅" if pnl >= 0 else "❌"
+    title = f"*{pnl_emoji} POZİSYON KAPANDI *`{symbol}`"
+    if is_simulation:
+        title = f"*[SİMÜLASYON] {title}"
+
     return (
-        f"*{pnl_emoji} POZİSYON KAPANDI *`{symbol}`\n\n"
+        f"{title}\n\n"
         f"▪️ *Kapanış Nedeni:* `{status}`\n"
         f"💵 *P&L:* `{pnl:+.2f} USDT`\n\n"
         f"Giriş Fiyatı: `{closed_pos.get('entry_price', 0):.4f}`\n"
@@ -53,8 +61,13 @@ def format_close_position_message(closed_pos: dict, pnl: float, status: str) -> 
 
 def format_partial_tp_message(symbol: str, close_amount: float, remaining_amount: float, entry_price: float) -> str:
     symbol_md = symbol.replace('/', r'\/')
+    is_live = app_config.settings.get('LIVE_TRADING', False)
+    title = f"✅ *KISMİ KÂR ALINDI* `{symbol_md}`"
+    if not is_live:
+        title = f"*[SİMÜLASYON] {title}"
+
     return (
-        f"✅ *KISMİ KÂR ALINDI* `{symbol_md}`\n\n"
+        f"{title}\n\n"
         f"Pozisyonun bir kısmı kapatılarak kâr realize edildi ve kalan pozisyonun riski sıfırlandı.\n\n"
         f"▪️ *Kapatılan Miktar:* `{close_amount:.4f}`\n"
         f"▪️ *Kalan Miktar:* `{remaining_amount:.4f}`\n"

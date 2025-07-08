@@ -21,6 +21,7 @@ class SettingsUpdate(BaseModel):
     GEMINI_MODEL: Optional[str] = None
     GEMINI_MODEL_FALLBACK_ORDER: Optional[List[str]] = None
     LIVE_TRADING: Optional[bool] = None
+    VIRTUAL_BALANCE: Optional[float] = None # YENİ
     DEFAULT_MARKET_TYPE: Optional[str] = None
     DEFAULT_ORDER_TYPE: Optional[str] = None
     USE_MTA_ANALYSIS: Optional[bool] = None
