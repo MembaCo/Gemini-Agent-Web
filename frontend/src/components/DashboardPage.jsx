@@ -167,6 +167,8 @@ const settingDescriptions = {
     USE_ATR_FOR_SLTP: "Zarar Durdur (SL) ve Kâr Al (TP) seviyelerini belirlemek için ATR göstergesi kullanılsın mı?",
     ATR_MULTIPLIER_SL: "Stop-Loss mesafesini belirlemek için ATR değerinin çarpılacağı katsayı.",
     RISK_REWARD_RATIO_TP: "Kâr Al (TP) seviyesinin, riske (SL mesafesi) göre oranı.",
+    USE_SCALP_EXIT: "Aktifse, pozisyonlar aşağıda belirlenen kâr yüzdesine ulaştığında diğer kuralları beklemeden hemen kapatılır. Volatil altcoinler için hızlı kâr almayı sağlar.",
+    SCALP_EXIT_PROFIT_PERCENT: "Hızlı Kâr Alma (Scalp Exit) özelliğinin tetikleneceği kâr yüzdesi.",
     USE_TRAILING_STOP_LOSS: "İz Süren Zarar Durdurma stratejisi aktif edilsin mi?",
     TRAILING_STOP_ACTIVATION_PERCENT: "Pozisyonun yüzde kaç kâra geçtiğinde Trailing SL'nin devreye gireceği.",
     USE_PARTIAL_TP: "Kısmi Kâr Alma stratejisi aktif edilsin mi?",
@@ -193,7 +195,7 @@ const settingDescriptions = {
 const settingCategories = [
     { title: 'Yapay Zeka ve Model Ayarları', keys: ['GEMINI_MODEL', 'GEMINI_MODEL_FALLBACK_ORDER', 'USE_MTA_ANALYSIS', 'MTA_TREND_TIMEFRAME'] },
     { title: 'Genel Ticaret ve Risk Yönetimi', keys: ['LIVE_TRADING', 'VIRTUAL_BALANCE', 'DEFAULT_MARKET_TYPE', 'DEFAULT_ORDER_TYPE', 'LEVERAGE', 'MAX_CONCURRENT_TRADES', 'RISK_PER_TRADE_PERCENT'] },
-    { title: 'Zarar Durdurma ve Kâr Alma Stratejileri', keys: ['USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP', 'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT', 'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT'] },
+    { title: 'Zarar Durdurma ve Kâr Alma Stratejileri', keys: ['USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP','USE_SCALP_EXIT', 'SCALP_EXIT_PROFIT_PERCENT', 'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT', 'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT'] },
     { title: 'Proaktif Tarayıcı Ayarları', keys: [
         'PROACTIVE_SCAN_ENABLED', 'PROACTIVE_SCAN_INTERVAL_SECONDS', 'PROACTIVE_SCAN_AUTO_CONFIRM',
         'PROACTIVE_SCAN_BLACKLIST', 'PROACTIVE_SCAN_WHITELIST', 'PROACTIVE_SCAN_PREFILTER_ENABLED',

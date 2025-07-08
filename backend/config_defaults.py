@@ -33,6 +33,8 @@ default_settings = {
     "USE_ATR_FOR_SLTP": True,
     "ATR_MULTIPLIER_SL": 2.0,
     "RISK_REWARD_RATIO_TP": 2.0,
+    "USE_SCALP_EXIT": False,
+    "SCALP_EXIT_PROFIT_PERCENT": 5.0, 
 
     # --- Gelişmiş Kâr Alma Stratejileri ---
     "USE_TRAILING_STOP_LOSS": True,

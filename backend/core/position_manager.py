@@ -180,8 +180,8 @@ def handle_bailout_exit(position: dict, current_price: float, pnl_percentage: fl
 
 async def check_all_managed_positions():
     """
-    Tüm yönetilen pozisyonları periyodik olarak kontrol eder. Bloklamayı önlemek için
-    ana mantık bir thread içinde çalıştırılır.
+    Tüm yönetilen pozisyonları periyodik olarak kontrol eder.
+    YENİ: Hızlı Kâr Alma (Scalp Exit) mantığı eklendi.
     """
     def _blocking_check():
         if not _ensure_exchange_is_available(): return
@@ -190,6 +190,10 @@ async def check_all_managed_positions():
         logging.info("Aktif pozisyonlar kontrol ediliyor...")
         active_positions = database.get_all_positions()
 
+        # Yeni ayarları döngü dışında bir kere al
+        use_scalp_exit = app_config.settings.get('USE_SCALP_EXIT', False)
+        scalp_profit_target = app_config.settings.get('SCALP_EXIT_PROFIT_PERCENT', 5.0)
+
         for position in active_positions:
             try:
                 current_price = get_price_with_cache(position["symbol"])
@@ -197,19 +201,22 @@ async def check_all_managed_positions():
                     logging.warning(f"Fiyat alınamadığı için {position['symbol']} pozisyonu kontrol edilemedi.")
                     continue
 
+                # PNL hesaplaması ve veritabanı güncellemesi
                 pnl, pnl_percentage = 0, 0
                 entry_price = position.get('entry_price', 0); amount = position.get('amount', 0); leverage = position.get('leverage', 1)
                 if entry_price > 0 and amount > 0:
                     pnl = (current_price - entry_price) * amount if position['side'] == 'buy' else (entry_price - current_price) * amount
-                    
-                    # Sanal bakiye veya gerçek bakiye üzerinden marjin hesapla
-                    is_live = app_config.settings.get('LIVE_TRADING', False)
-                    initial_balance = app_config.settings.get('VIRTUAL_BALANCE', 10000.0) if not is_live else get_wallet_balance().get('balance', 0)
                     margin = (entry_price * amount) / leverage if leverage > 0 else 0
-                    
                     pnl_percentage = (pnl / margin) * 100 if margin > 0 else 0
                 database.update_position_pnl(position['symbol'], pnl, pnl_percentage)
 
+                # === YENİ: HIZLI KÂR ALMA (SCALP EXIT) KONTROLÜ ===
+                if use_scalp_exit and pnl_percentage >= scalp_profit_target:
+                    logging.info(f"[SCALP-EXIT] Pozisyon hızlı kâr alma hedefine ulaştı: {position['symbol']} @ {pnl_percentage:.2f}%")
+                    close_existing_trade(position['symbol'], close_reason="SCALP_EXIT")
+                    continue # Bu pozisyon kapatıldığı için döngünün geri kalanını atla
+
+                # Standart SL/TP kontrolü
                 side = position.get("side"); sl_price = position.get("stop_loss", 0.0); tp_price = position.get("take_profit", 0.0)
                 close_reason = None
                 if sl_price > 0 and ((side == "buy" and current_price <= sl_price) or (side == "sell" and current_price >= sl_price)): close_reason = "SL"
@@ -220,6 +227,7 @@ async def check_all_managed_positions():
                     close_existing_trade(position['symbol'], close_reason=close_reason)
                     continue
 
+                # Diğer Gelişmiş Stratejiler
                 if app_config.settings.get('USE_BAILOUT_EXIT'):
                     if handle_bailout_exit(dict(position), current_price, pnl_percentage):
                         continue

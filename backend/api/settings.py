@@ -32,6 +32,8 @@ class SettingsUpdate(BaseModel):
     USE_ATR_FOR_SLTP: Optional[bool] = None
     ATR_MULTIPLIER_SL: Optional[float] = None
     RISK_REWARD_RATIO_TP: Optional[float] = None
+    USE_SCALP_EXIT: Optional[bool] = None
+    SCALP_EXIT_PROFIT_PERCENT: Optional[float] = None
     USE_TRAILING_STOP_LOSS: Optional[bool] = None
     TRAILING_STOP_ACTIVATION_PERCENT: Optional[float] = None
     USE_PARTIAL_TP: Optional[bool] = None

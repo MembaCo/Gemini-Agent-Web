@@ -1,5 +1,24 @@
 # Değişiklik Günlüğü
 ...
+
+---
+### [4.5.0] - 2025-07-08 - Hızlı Kâr Alma (Scalp Exit) ve Simülasyon Modu İyileştirmeleri
+- **Bu sürüm, volatil piyasalarda hızlı kâr almayı sağlayan yeni bir strateji eklerken, LIVE_TRADING kapalıyken kullanılan simülasyon modunu temelden iyileştirerek daha kararlı ve mantıklı bir test ortamı sunar.**
+
+🚀 **Eklendi (Added)**
+
+Hızlı Kâr Alma (Scalp Exit) Özelliği: Pozisyonların, önceden belirlenmiş bir kâr yüzdesine ulaştığında diğer kuralları beklemeden otomatik olarak kapatılmasını sağlayan yeni bir strateji eklendi. Bu özellik, özellikle volatil altcoinlerdeki ani yükselişlerden kâr elde etmek için tasarlanmıştır (USE_SCALP_EXIT, SCALP_EXIT_PROFIT_PERCENT).
+
+Sanal Bakiye (Virtual Balance) Ayarı: Simülasyon modunda (LIVE_TRADING kapalıyken) kullanılmak üzere, arayüzden yönetilebilen bir sanal bakiye (VIRTUAL_BALANCE) ayarı eklendi. Bu sayede, test işlemleri gerçek cüzdan bakiyesinden tamamen bağımsız hale getirildi.
+
+✅ **Düzeltildi (Fixed)**S
+
+KRİTİK: Simülasyon Modu "Hayalet Pozisyon" Hatası: LIVE_TRADING kapalıyken, sistemin borsadaki pozisyonlarla senkronize olmaya çalışması ve bu nedenle simülasyon işlemlerini "hayalet" olarak algılayıp silmesi hatası tamamen giderildi. Artık simülasyon modunda borsa ile pozisyon senkronizasyonu yapılmamaktadır.
+
+KRİTİK: Simülasyon Modu "Yetersiz Bakiye" Hatası: Simülasyon modunda işlem açmaya çalışırken, sistemin gerçek bakiye kontrolü yapması nedeniyle oluşan "yetersiz bakiye" hatası, yeni eklenen sanal bakiye sistemi ile çözüldü.
+
+Arayüz Ayarlarının Yenilenme Sorunu: "Uygulama Ayarları" penceresi açıkken, sayfanın 5 saniyede bir yenilenmesi nedeniyle ayar yapmanın zorlaşması sorunu giderildi. Artık ayarlar penceresi açıkken arka plan veri yenilemesi duraklatılmaktadır.
+
 ---
 ### [4.4.3] - 2025-07-06 - Pozisyonların Ters Yöne Dönme Hatası Düzeltildi
 
