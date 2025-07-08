@@ -67,7 +67,7 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_RSI_UPPER: Optional[int] = None
     PROACTIVE_SCAN_ADX_THRESHOLD: Optional[int] = None
     
-    # YENİ: Gelişmiş Filtre Ayarları
+    # YENİ: Gelişmiş Filtre Ayarları 
     PROACTIVE_SCAN_USE_VOLATILITY_FILTER: Optional[bool] = None
     PROACTIVE_SCAN_ATR_PERIOD: Optional[int] = None
     PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT: Optional[float] = None
@@ -126,11 +126,11 @@ def reschedule_jobs(scheduler, new_settings: dict):
         logging.error(f"Scheduler görevleri yeniden zamanlanırken hata oluştu: {e}", exc_info=True)
 
 @router.get("/", summary="Tüm uygulama ayarlarını al")
-async def get_settings():
+async def get_settings(request: Request): # 'request: Request' parametresini ekleyin
     try:
         settings = database.get_all_settings()
-        # Uygulama versiyonunu da ekleyelim
-        settings['APP_VERSION'] = "4.3.0" # Örnek versiyon, config'den de alınabilir
+        # UYGUN DÜZELTME: FastAPI uygulaması üzerinden APP_VERSION'ı al
+        settings['APP_VERSION'] = request.app.version
         return settings
     except Exception as e:
         logging.error(f"Ayarlar okunurken hata: {e}", exc_info=True)
