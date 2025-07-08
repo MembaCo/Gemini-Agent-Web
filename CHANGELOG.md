@@ -1,6 +1,32 @@
 # Değişiklik Günlüğü
+Tüm önemli proje değişiklikleri bu dosyada belgelenmektedir.
 ...
+---
 
+### [4.6.0] - 2025-07-08 - Telegram Bot Devrimi ve Kararlılık Düzeltmeleri
+Bu sürüm, Telegram botunu basit bir bildirim aracından, projenin tam teşekküllü bir uzaktan kumandasına dönüştürürken, uygulamanın kendi kendine kapanmasına neden olan kritik bir arka plan hatasını gidererek tam kararlılık sağlar.
+
+🚀 **Eklendi (Added)**
+
+- ***Tam İnteraktif Telegram Botu:*** Telegram botu, aşağıdaki özelliklerle baştan sona yenilendi:
+
+- ***İnteraktif Pozisyon Yönetimi:*** /pozisyonlar komutu artık her pozisyonun altına "Yeniden Analiz Et" ve "Kapat" butonları ekleyerek tek tıkla yönetim imkanı sunar.
+
+- ***İnteraktif Ayar Sihirbazı:*** /ayar_degistir komutu ile, kullanıcıya adım adım ve butonlarla hangi ayarı değiştirmek istediğini soran bir diyalog akışı eklendi.
+
+- ***Anlık Grafik Çizimi:*** /grafik <SEMBOL> <ARALIK> komutu ile, belirtilen paritenin anlık mum grafiğini ve temel göstergelerini doğrudan Telegram'a resim olarak gönderen bir özellik eklendi.
+
+- ***Detaylı Raporlama:*** /rapor, /ayarlar ve /detay gibi yeni komutlarla botun performansı, ayarları ve pozisyonların açılış nedenleri gibi bilgilere anında erişim sağlandı.
+
+- ***Panik Butonları:*** /durdur ve /baslat komutları ile LIVE_TRADING modu uzaktan anında açılıp kapatılabilir hale getirildi.
+
+✅ **Düzeltildi (Fixed)**
+
+KRİTİK: Sunucunun Kendi Kendine Kapanma Hatası: FastAPI (Uvicorn) ile python-telegram-bot kütüphanesi arasındaki asyncio olay döngüsü (event loop) çakışması giderildi. Bu hata, uygulamanın başladıktan kısa bir süre sonra herhangi bir hata vermeden kapanmasına neden oluyordu. Bu düzeltme ile uygulama artık kararlı bir şekilde çalışmaktadır.
+
+trader.py reason Parametresi Hatası: Yeni bir pozisyon açılırken, AI analizinden her zaman bir "gerekçe" gelmemesi durumunda uygulamanın çökmesine neden olan hata, reason parametresine varsayılan bir değer atanarak giderildi.
+
+Telegram PTBUserWarning Uyarısı: Konsol çıktısında görünen ve kafa karışıklığına neden olan bilgilendirme uyarısı, işlevselliği etkilemeden gizlendi.
 ---
 ### [4.5.0] - 2025-07-08 - Hızlı Kâr Alma (Scalp Exit) ve Simülasyon Modu İyileştirmeleri
 - **Bu sürüm, volatil piyasalarda hızlı kâr almayı sağlayan yeni bir strateji eklerken, LIVE_TRADING kapalıyken kullanılan simülasyon modunu temelden iyileştirerek daha kararlı ve mantıklı bir test ortamı sunar.**

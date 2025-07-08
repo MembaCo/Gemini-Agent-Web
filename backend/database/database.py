@@ -34,7 +34,8 @@ def init_db():
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS managed_positions (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL UNIQUE, side TEXT NOT NULL, amount REAL NOT NULL, initial_amount REAL, entry_price REAL NOT NULL, timeframe TEXT NOT NULL, leverage REAL NOT NULL, stop_loss REAL NOT NULL, initial_stop_loss REAL, take_profit REAL NOT NULL, partial_tp_executed BOOLEAN DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, pnl REAL DEFAULT 0, pnl_percentage REAL DEFAULT 0)')
+        # YENİ: 'reason' sütunu eklendi
+        cursor.execute('CREATE TABLE IF NOT EXISTS managed_positions (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL UNIQUE, side TEXT NOT NULL, amount REAL NOT NULL, initial_amount REAL, entry_price REAL NOT NULL, timeframe TEXT NOT NULL, leverage REAL NOT NULL, stop_loss REAL NOT NULL, initial_stop_loss REAL, take_profit REAL NOT NULL, partial_tp_executed BOOLEAN DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, pnl REAL DEFAULT 0, pnl_percentage REAL DEFAULT 0, reason TEXT)')
         cursor.execute('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, side TEXT NOT NULL, amount REAL NOT NULL, entry_price REAL NOT NULL, close_price REAL NOT NULL, pnl REAL NOT NULL, status TEXT NOT NULL, timeframe TEXT, opened_at TIMESTAMP, closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, type TEXT NOT NULL)')
         cursor.execute('CREATE TABLE IF NOT EXISTS strategy_presets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, settings TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
@@ -49,39 +50,23 @@ def init_db():
             )
         ''')
         
-        # --- ŞEMA GÜNCELLEMELERİ (GERİYE DÖNÜK UYUMLULUK) ---
         cursor.execute("PRAGMA table_info(managed_positions)")
         columns = [row[1] for row in cursor.fetchall()]
-        if 'pnl' not in columns:
-            cursor.execute('ALTER TABLE managed_positions ADD COLUMN pnl REAL DEFAULT 0')
-        if 'pnl_percentage' not in columns:
-            cursor.execute('ALTER TABLE managed_positions ADD COLUMN pnl_percentage REAL DEFAULT 0')
-            
-        # YENİ: Bailout Exit için sütunlar ekleniyor
-        if 'bailout_armed' not in columns:
-            cursor.execute('ALTER TABLE managed_positions ADD COLUMN bailout_armed BOOLEAN DEFAULT 0')
-        if 'extremum_price' not in columns:
-            cursor.execute('ALTER TABLE managed_positions ADD COLUMN extremum_price REAL DEFAULT 0')
-        # YENİ: AI bailout onayı için sütun
-        if 'bailout_analysis_triggered' not in columns:
-            cursor.execute('ALTER TABLE managed_positions ADD COLUMN bailout_analysis_triggered BOOLEAN DEFAULT 0')
-        logging.info("'managed_positions' tablosuna 'bailout_analysis_triggered' sütunu eklendi.")
-   
-            
+        if 'pnl' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN pnl REAL DEFAULT 0')
+        if 'pnl_percentage' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN pnl_percentage REAL DEFAULT 0')
+        if 'bailout_armed' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN bailout_armed BOOLEAN DEFAULT 0')
+        if 'extremum_price' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN extremum_price REAL DEFAULT 0')
+        if 'bailout_analysis_triggered' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN bailout_analysis_triggered BOOLEAN DEFAULT 0')
+        # YENİ: 'reason' sütunu yoksa ekle
+        if 'reason' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN reason TEXT')
+
         cursor.execute("PRAGMA table_info(trade_history)")
         history_columns = [row[1] for row in cursor.fetchall()]
-        if 'timeframe' not in history_columns:
-            cursor.execute('ALTER TABLE trade_history ADD COLUMN timeframe TEXT')
-            logging.info("'trade_history' tablosuna 'timeframe' sütunu eklendi.")
+        if 'timeframe' not in history_columns: cursor.execute('ALTER TABLE trade_history ADD COLUMN timeframe TEXT')
 
         conn.commit()
-        
         _initialize_settings(conn)
-        
         logging.info("Veritabanı tabloları başarıyla kontrol edildi/oluşturuldu.")
-    except Exception as e:
-        logging.error(f"Veritabanı başlatılırken hata oluştu: {e}", exc_info=True)
-        raise e
     finally:
         conn.close()
 
@@ -135,12 +120,12 @@ def update_settings(settings: dict):
     finally:
         conn.close()
 
-# --- POZİSYON YÖNETİMİ FONKSİYONLARI (Değişiklik yok) ---
-# ... (add_position, get_all_positions vb. fonksiyonlar burada) ...
 def add_position(pos: dict):
     conn = get_db_connection()
     try:
-        conn.execute('INSERT INTO managed_positions (symbol, side, amount, initial_amount, entry_price, timeframe, leverage, stop_loss, take_profit, initial_stop_loss) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (pos['symbol'], pos['side'], pos['amount'], pos['amount'], pos['entry_price'], pos['timeframe'], pos['leverage'], pos['stop_loss'], pos['take_profit'], pos['stop_loss']))
+        # YENİ: 'reason' alanı eklendi
+        conn.execute('INSERT INTO managed_positions (symbol, side, amount, initial_amount, entry_price, timeframe, leverage, stop_loss, take_profit, initial_stop_loss, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+                     (pos['symbol'], pos['side'], pos['amount'], pos['amount'], pos['entry_price'], pos['timeframe'], pos['leverage'], pos['stop_loss'], pos['take_profit'], pos['stop_loss'], pos.get('reason', 'N/A')))
         conn.commit()
     finally:
         conn.close()

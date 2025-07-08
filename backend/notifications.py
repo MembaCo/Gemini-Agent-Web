@@ -11,6 +11,10 @@ from core import app_config
 load_dotenv()
 
 def send_telegram_message(message: str):
+    """
+    Telegram'a bir metin mesajı gönderir.
+    Bu fonksiyon, ayarlar ve .env dosyası üzerinden yapılandırılmıştır.
+    """
     if not app_config.settings.get('TELEGRAM_ENABLED'):
         return
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -28,6 +32,10 @@ def send_telegram_message(message: str):
         logging.error(f"Telegram API'sine bağlanırken bir ağ hatası oluştu: {e}")
 
 def format_open_position_message(pos_details: dict, is_simulation: bool = False) -> str:
+    """
+    Yeni açılan bir pozisyon için formatlı bir Telegram mesajı oluşturur.
+    Simülasyon işlemleri için özel bir başlık ekler.
+    """
     symbol = pos_details.get('symbol', 'N/A').replace('/', r'\/')
     side_emoji = "📈" if pos_details.get('side') == 'buy' else "📉"
     title = f"*{side_emoji} YENİ POZİSYON AÇILDI *`{symbol}`"
@@ -45,6 +53,10 @@ def format_open_position_message(pos_details: dict, is_simulation: bool = False)
     )
 
 def format_close_position_message(closed_pos: dict, pnl: float, status: str, is_simulation: bool = False) -> str:
+    """
+    Kapanan bir pozisyon için formatlı bir Telegram mesajı oluşturur.
+    Simülasyon işlemleri için özel bir başlık ekler.
+    """
     symbol = closed_pos.get('symbol', 'N/A').replace('/', r'\/')
     pnl_emoji = "✅" if pnl >= 0 else "❌"
     title = f"*{pnl_emoji} POZİSYON KAPANDI *`{symbol}`"
@@ -60,6 +72,9 @@ def format_close_position_message(closed_pos: dict, pnl: float, status: str, is_
     )
 
 def format_partial_tp_message(symbol: str, close_amount: float, remaining_amount: float, entry_price: float) -> str:
+    """
+    Kısmi kâr alınan bir işlem için formatlı bir Telegram mesajı oluşturur.
+    """
     symbol_md = symbol.replace('/', r'\/')
     is_live = app_config.settings.get('LIVE_TRADING', False)
     title = f"✅ *KISMİ KÂR ALINDI* `{symbol_md}`"

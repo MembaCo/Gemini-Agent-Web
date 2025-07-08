@@ -223,16 +223,18 @@ async def execute_single_scan_cycle():
                 if parsed_data.get('recommendation') in ['AL', 'SAT']:
                     if config.get('PROACTIVE_SCAN_AUTO_CONFIRM'):
                         try:
-                            await asyncio.to_thread(open_new_trade, symbol=symbol, recommendation=parsed_data['recommendation'], timeframe=entry_timeframe, current_price=current_price_val)
+                            # DÜZELTME: 'reason' parametresi eklendi
+                            await asyncio.to_thread(
+                                open_new_trade, 
+                                symbol=symbol, 
+                                recommendation=parsed_data['recommendation'], 
+                                timeframe=entry_timeframe, 
+                                current_price=current_price_val,
+                                reason=parsed_data.get('reason', 'Otomatik Tarayıcı')
+                            )
+                        except TradeException as e:
                             return {"type": "success", "symbol": symbol, "message": f"Otomatik pozisyon açıldı: {parsed_data['recommendation']}"}
-                        except TradeException as te:
-                            return {"type": "critical", "symbol": symbol, "message": f"Otomatik işlem hatası: {te}"}
-                    else:
-                        database.log_event("SUCCESS", "Scanner", f"Fırsat bulundu: {parsed_data.get('recommendation')} {symbol}. Kullanıcı onayı bekleniyor.")
-                        return {"type": "opportunity", "data": parsed_data}
-                
-                return {"type": "info", "symbol": symbol, "message": f"Analiz sonucu: BEKLE."}
-                
+                        
             except ResourceExhausted:
                 logging.critical(f"Proaktif tarama döngüsü, tüm modellerin kotası dolduğu için durduruldu. Sembol: {symbol}")
                 return {"type": "critical", "symbol": symbol, "message": f"Tüm AI modellerinin kotası doldu."}
