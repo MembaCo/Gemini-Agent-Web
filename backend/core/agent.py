@@ -16,7 +16,6 @@ current_model_index = 0
 
 def _get_llm_instance(model_name: str) -> ChatGoogleGenerativeAI:
     """Belirtilen model ismi için bir ChatGoogleGenerativeAI örneği oluşturur."""
-    # DÜZELTME: Kullanımdan kaldırılan 'convert_system_message_to_human' parametresi kaldırıldı.
     return ChatGoogleGenerativeAI(model=model_name, temperature=0.1)
 
 def _initialize_model_list_and_llm():
@@ -91,6 +90,7 @@ def llm_invoke_with_fallback(prompt: str):
     max_retries = len(model_fallback_list)
     for attempt in range(max_retries):
         try:
+            # DÜZELTME: LangChain'in yeni .invoke() metodu kullanılıyor.
             return llm.invoke(prompt)
         except ResourceExhausted as e:
             logging.warning(f"Kota hatası ({model_fallback_list[current_model_index]}): {e}")
@@ -141,17 +141,20 @@ def create_bailout_reanalysis_prompt(position: dict, current_price: float, pnl_p
     """
 
 def create_reanalysis_prompt(position: dict, current_price: float, indicators: dict) -> str:
-    """Mevcut bir pozisyonu, GÜNCEL piyasa verileriyle yeniden değerlendirmek için prompt oluşturur."""
+    """
+    Mevcut bir pozisyonu, GÜNCEL piyasa verileri ve İLK AÇILIŞ GEREKÇESİ ile yeniden değerlendirmek için prompt oluşturur.
+    """
     symbol = position.get("symbol")
     timeframe = position.get("timeframe")
-    side = position.get("side", "").upper()
+    side = "Alış (Long)" if position.get("side") == "buy" else "Satış (Short)"
     entry_price = position.get("entry_price")
-    
-    # Gelen indikatör verilerini metin formatına çevir
+    # YENİ: Veritabanından pozisyonun orijinal açılış sebebini alıyoruz.
+    original_reason = position.get("reason", "Belirtilmemiş.")
+
     indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in indicators.items()])
 
     return f"""
-    Sen, tecrübeli bir pozisyon yöneticisisin. Görevin, mevcut bir pozisyonun riskini ve potansiyelini anlık verilerle analiz edip net bir tavsiye sunmaktır.
+    Sen, soğukkanlı ve tecrübeli bir pozisyon yöneticisisin. Görevin, zaten açık olan bir pozisyonu objektif bir şekilde yeniden değerlendirmektir.
 
     ## MEVCUT POZİSYON BİLGİLERİ:
     - Sembol: {symbol}
@@ -159,17 +162,24 @@ def create_reanalysis_prompt(position: dict, current_price: float, indicators: d
     - Giriş Fiyatı: {entry_price}
     - Analiz Zaman Aralığı: {timeframe}
 
+    ## POZİSYONUN İLK AÇILIŞ GEREKÇESİ:
+    Bu pozisyon ilk olarak şu düşünceyle açılmıştı: "{original_reason}"
+
     ## GÜNCEL PİYASA VERİLERİ:
     - Anlık Fiyat: {current_price}
     - Teknik Göstergeler ({timeframe}):
     {indicator_text}
 
     ## GÖREVİN:
-    Yukarıdaki GÜNCEL teknik göstergeleri ve anlık fiyatı kullanarak, bu pozisyonu elde tutmaya devam etmek mantıklı mı, yoksa risk yönetimi gereği şimdi kapatmak mı daha doğru? Kararın 'TUT' (Hold) veya 'KAPAT' (Close) şeklinde olmalı.
+    Yukarıdaki GÜNCEL teknik göstergeleri ve anlık fiyatı, pozisyonun İLK AÇILIŞ GEREKÇESİ ile karşılaştır.
+    1.  İlk açılış gerekçesi güncel veriler ışığında hala geçerli mi?
+    2.  Yoksa piyasa koşulları, orijinal stratejiyi geçersiz kılacak şekilde değişti mi?
+    
+    Kararın, bu değerlendirmeye göre 'TUT' (Hold) veya 'KAPAT' (Close) şeklinde olmalı. Pozisyonu sadece küçük bir zarar/kâr etti diye hemen kapatma. Sadece orijinal strateji bozulduysa kapatmayı öner.
 
     ## NİHAİ RAPOR FORMATI:
     Kararını ve bu kararı vermendeki en önemli teknik gerekçeyi içeren bir JSON nesnesi döndür.
-    Örnek: {{"recommendation": "KAPAT", "reason": "Fiyat giriş seviyesinin üzerine çıktı ve RSI aşırı alım sinyali veriyor, risk yönetimi gereği kapatılmalı."}}
+    Örnek: {{"recommendation": "TUT", "reason": "İlk açılış gerekçemiz olan 4 saatlik düzeltme beklentisi devam ediyor ve RSI hala aşırı alım bölgesinde olduğu için pozisyonu tutmak mantıklıdır."}}
     """
 
 
@@ -177,7 +187,6 @@ def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, 
     entry_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in entry_indicators.items()])
     trend_indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in trend_indicators.items()])
     
-    # --- YENİ: Dominant Sinyal Belirleme Mantığı ---
     entry_adx = entry_indicators.get('ADX', 0)
     trend_adx = trend_indicators.get('ADX', 0)
     
@@ -187,7 +196,6 @@ def create_mta_analysis_prompt(symbol: str, price: float, entry_timeframe: str, 
     else:
         dominant_signal_source = trend_timeframe
         dominant_signal_type = "Ana Trend"
-    # --- YENİ MANTIK SONU ---
 
     return f"""
     Sen, Çoklu Zaman Aralığı (MTA) konusunda uzmanlaşmış, tecrübeli bir trading analistisin.
@@ -254,11 +262,16 @@ def parse_agent_response(response: str) -> dict | None:
     if not response or not isinstance(response, str):
         return None
     try:
-        if "```json" in response:
-            response = response.split("```json")[1].split("```")[0]
-        elif "```" in response:
-            response = response.split("```")[1].split("```")[0]
-        return json.loads(response.strip())
-    except (json.JSONDecodeError, IndexError):
-        logging.error(f"JSON ayrıştırma hatası. Gelen Yanıt: {response}")
+        # Gelen yanıtın LangChain'in `AIMessage` objesi olabileceğini varsayarak
+        # doğrudan .content özelliğine erişiyoruz.
+        content_to_parse = response.content if hasattr(response, 'content') else response
+        
+        if "```json" in content_to_parse:
+            content_to_parse = content_to_parse.split("```json")[1].split("```")[0]
+        elif "```" in content_to_parse:
+            content_to_parse = content_to_parse.split("```")[1].split("```")[0]
+        
+        return json.loads(content_to_parse.strip())
+    except (json.JSONDecodeError, IndexError) as e:
+        logging.error(f"JSON ayrıştırma hatası. Gelen Yanıt: {response}. Hata: {e}")
         return None

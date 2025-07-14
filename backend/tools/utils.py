@@ -24,7 +24,10 @@ def _get_unified_symbol(symbol_input: str) -> str:
     return f"{base}/USDT"
 
 def _parse_symbol_timeframe_input(input_str: str) -> tuple[str, str]:
-    """Girdiden sembol ve zaman aralığını daha esnek ve hatasız bir şekilde ayrıştırır."""
+    """
+    Girdiden sembol ve zaman aralığını daha esnek ve hatasız bir şekilde ayrıştırır.
+    Örnek Girdiler: 'BTC/USDT,15m', 'sol 1h', 'eth'
+    """
     s = str(input_str).strip()
     # Zaman aralıklarını uzunluklarına göre tersten sıralayarak daha spesifik olanların (örn: '15m')
     # daha genel olanlardan ('1m') önce kontrol edilmesini sağlarız.

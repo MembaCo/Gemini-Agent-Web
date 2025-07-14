@@ -143,9 +143,6 @@ const ActivePositions = ({ positions, onClose, onRefresh, onReanalyze, refreshin
     </div>
 );
 
-// ===================================================================================
-// YENİ: AYARLAR MODALİ İÇİN YENİDEN DÜZENLENMİŞ VERİ YAPILARI VE BİLEŞENLER
-// ===================================================================================
 
 const settingLabelsAndDescriptions = {
     GEMINI_MODEL: { label: "Ana AI Modeli", description: "Ana analizler için kullanılacak varsayılan Gemini AI modeli." },
@@ -201,7 +198,6 @@ const SettingItem = ({ settingKey, value, onSettingsChange }) => {
 
     const renderInput = () => {
         const selectOptions = { "GEMINI_MODEL": ["gemini-1.5-flash", "gemini-1.5-pro"], "DEFAULT_MARKET_TYPE": ["future", "spot"], "DEFAULT_ORDER_TYPE": ["LIMIT", "MARKET"], "MTA_TREND_TIMEFRAME": ["15m", "1h", "4h", "1d"] };
-        // DÜZELTME: 'key' yerine 'settingKey' kullanılıyor.
         if (settingKey in selectOptions) { 
             return <select value={value} onChange={e => onSettingsChange(settingKey, e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {selectOptions[settingKey].map(o => <option key={o} value={o}>{o}</option>)}
@@ -277,16 +273,33 @@ const SettingsModal = ({ isVisible, onClose, settingsData, onSave, onSettingsCha
     );
 };
 
-
 // --- ANA DASHBOARD BİLEŞENİ ---
 export const DashboardPage = () => {
+    const { 
+        showToast, 
+        fetchData, 
+        fetchPositions, 
+        saveSettings, 
+        fetchEvents, 
+        runAnalysis, 
+        runProactiveScan, 
+        openPosition, 
+        closePosition, 
+        reanalyzePosition, 
+        refreshPnl,
+        // DÜZELTME: Ayarları artık local state'den değil, context'ten alıyoruz
+        settings, 
+        setSettings, 
+        ...auth 
+    } = useAuth();
+
+    // Local state'ler
     const [stats, setStats] = useState({});
     const [chartData, setChartData] = useState([]);
     const [activePositions, setActivePositions] = useState([]);
     const [tradeHistory, setTradeHistory] = useState([]);
     const [filteredHistory, setFilteredHistory] = useState([]);
     const [searchQuery, setSearchQuery] = useState("");
-    const [settings, setSettings] = useState({});
     const [logs, setLogs] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isDataLoaded, setIsDataLoaded] = useState(false);
@@ -307,73 +320,127 @@ export const DashboardPage = () => {
     const [bulkReanalysisResults, setBulkReanalysisResults] = useState(null);
     const [isGroupActionLoading, setIsGroupActionLoading] = useState(false);
 
-    const { showToast, fetchData, fetchPositions, fetchSettings, saveSettings, fetchEvents, runAnalysis, runProactiveScan, openPosition, closePosition, reanalyzePosition, refreshPnl, ...auth } = useAuth();
-
-    const loadAllData = useCallback(async (showLoadingSpinner = false) => {
+    // Sadece dinamik verileri çeken fonksiyon
+    const loadDynamicData = useCallback(async (showLoadingSpinner = false) => {
         if (showLoadingSpinner && !isDataLoaded) setIsLoading(true);
         try {
-            const [dashboardData, positionsData, settingsData, eventsData] = await Promise.all([ fetchData(), fetchPositions(), fetchSettings(), fetchEvents() ]);
+            const [dashboardData, positionsData, eventsData] = await Promise.all([
+                fetchData(), 
+                fetchPositions(), 
+                fetchEvents()
+            ]);
             setStats(dashboardData.stats || {});
             setChartData(dashboardData.chart_data?.points || []);
             setTradeHistory(dashboardData.trade_history || []);
             setActivePositions(positionsData.managed_positions || []);
-            setSettings(settingsData || {});
-            setTempSettings(settingsData || {});
-            setLogs(eventsData.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp)) || []);
+            setLogs(eventsData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)) || []);
             if (!isDataLoaded) setIsDataLoaded(true);
-        } catch (err) { showToast(err.message, 'error'); } finally { if (showLoadingSpinner) setIsLoading(false); }
-    }, [fetchData, fetchPositions, fetchSettings, fetchEvents, showToast, isDataLoaded]);
+        } catch (err) {
+            showToast(err.message, 'error');
+        } finally {
+            if (showLoadingSpinner) setIsLoading(false);
+        }
+    }, [fetchData, fetchPositions, fetchEvents, showToast, isDataLoaded]);
 
+    // Ana veri yükleme ve periyodik yenileme
     useEffect(() => {
-        loadAllData(true);
+        // Context'ten gelen ayarlar yüklendiğinde dinamik verileri çek.
+        if (Object.keys(settings).length > 0) {
+            loadDynamicData(true);
+        }
+
+        // Ayarlar penceresi kapalıyken ve ayarlar yüklüyken periyodik yenileme yap
         let intervalId = null;
-        if (!isSettingsModalVisible) {
-            intervalId = setInterval(() => loadAllData(false), 5000);
+        if (!isSettingsModalVisible && Object.keys(settings).length > 0) {
+            intervalId = setInterval(() => loadDynamicData(false), 5000);
         }
         return () => {
             if (intervalId) clearInterval(intervalId);
         };
-    }, [loadAllData, isSettingsModalVisible]);
+    }, [settings, loadDynamicData, isSettingsModalVisible]);
+    
+    // Ayarlar modalı açıldığında, geçici state'i global context'ten gelen ayarlar ile doldur.
+    useEffect(() => {
+        if (isSettingsModalVisible) {
+            setTempSettings(settings);
+        }
+    }, [isSettingsModalVisible, settings]);
 
-    useEffect(() => { setFilteredHistory(tradeHistory.filter(t => t.symbol.toLowerCase().includes(searchQuery.toLowerCase()))); }, [searchQuery, tradeHistory]);
+    // İşlem geçmişi aramasını yönet
+    useEffect(() => {
+        setFilteredHistory(tradeHistory.filter(t => t.symbol.toLowerCase().includes(searchQuery.toLowerCase())));
+    }, [searchQuery, tradeHistory]);
 
+    // DÜZELTME: handleSaveSettings fonksiyonu artık sayfa verilerini yeniden yüklemiyor.
+    const handleSaveSettings = async () => {
+        showToast('Ayarlar kaydediliyor...', 'info');
+        try {
+            await saveSettings(tempSettings);
+            showToast('Ayarlar başarıyla kaydedildi.', 'success');
+            // Global context'teki ayarları direkt güncelle
+            setSettings(tempSettings);
+            setIsSettingsModalVisible(false);
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    };
+
+    // Callback Handler'lar
     const handleAnalysis = useCallback(async ({ symbol, timeframe }) => { setIsAnalyzing(true); showToast(`${symbol} için analiz başlatıldı...`, 'info'); try { const result = await runAnalysis({ symbol, timeframe }); setAnalysisResult(result); } catch (err) { showToast(err.message, 'error'); } finally { setIsAnalyzing(false); } }, [runAnalysis, showToast]);
-    const handleRunScan = useCallback(async () => { setIsScanning(true); showToast('Proaktif tarama tetiklendi...', 'info'); try { const result = await runProactiveScan(); const opportunities = result.details?.filter(d => d.type === 'opportunity').map(d => d.data) || []; if (opportunities.length > 0) { setProactiveOpportunities(opportunities); showToast(`${opportunities.length} yeni fırsat bulundu!`, 'success'); } else { showToast('Tarama tamamlandı, yeni fırsat bulunamadı.', 'info'); } await loadAllData(); } catch (err) { showToast(err.message, 'error'); } finally { setIsScanning(false); } }, [runProactiveScan, showToast, loadAllData]);
-    const handleConfirmTrade = useCallback(async (tradeData) => { setOpeningTradeSymbol(tradeData.symbol); try { await openPosition({ symbol: tradeData.symbol, recommendation: tradeData.recommendation, timeframe: tradeData.timeframe, price: tradeData.data.price, }); showToast('Pozisyon başarıyla açıldı!', 'success'); setAnalysisResult(null); setProactiveOpportunities(prev => prev.filter(p => p.symbol !== tradeData.symbol)); await loadAllData(); } catch (err) { showToast(err.message, 'error'); } finally { setOpeningTradeSymbol(null); } }, [openPosition, showToast, loadAllData]);
+    const handleRunScan = useCallback(async () => { setIsScanning(true); showToast('Proaktif tarama tetiklendi...', 'info'); try { const result = await runProactiveScan(); const opportunities = result.details?.filter(d => d.type === 'opportunity').map(d => d.data) || []; if (opportunities.length > 0) { setProactiveOpportunities(opportunities); showToast(`${opportunities.length} yeni fırsat bulundu!`, 'success'); } else { showToast('Tarama tamamlandı, yeni fırsat bulunamadı.', 'info'); } await loadDynamicData(); } catch (err) { showToast(err.message, 'error'); } finally { setIsScanning(false); } }, [runProactiveScan, showToast, loadDynamicData]);
+    const handleConfirmTrade = useCallback(async (tradeData) => { setOpeningTradeSymbol(tradeData.symbol); try { await openPosition({ symbol: tradeData.symbol, recommendation: tradeData.recommendation, timeframe: tradeData.timeframe, price: tradeData.data.price, }); showToast('Pozisyon başarıyla açıldı!', 'success'); setAnalysisResult(null); setProactiveOpportunities(prev => prev.filter(p => p.symbol !== tradeData.symbol)); await loadDynamicData(); } catch (err) { showToast(err.message, 'error'); } finally { setOpeningTradeSymbol(null); } }, [openPosition, showToast, loadDynamicData]);
     const handleAttemptClosePosition = (symbol) => setConfirmationDetails({ title: 'Pozisyonu Kapat', message: `${symbol} pozisyonunu manuel olarak kapatmak istediğinizden emin misiniz?`, onConfirm: () => handleClosePosition(symbol) });
-    const handleClosePosition = useCallback(async (symbol) => { showToast(`${symbol} kapatılıyor...`, 'info'); try { await closePosition(symbol); showToast(`${symbol} başarıyla kapatıldı.`, 'success'); await loadAllData(); } catch (err) { showToast(err.message, 'error'); } finally { setConfirmationDetails(null); } }, [closePosition, showToast, loadAllData]);
-    const handleRefreshPnl = useCallback(async (symbol) => { setRefreshingSymbol(symbol); try { await refreshPnl(symbol); await loadAllData(); } catch(err) { showToast(err.message, 'error');} finally { setRefreshingSymbol(null); }}, [refreshPnl, loadAllData, showToast]);
+    const handleClosePosition = useCallback(async (symbol) => { showToast(`${symbol} kapatılıyor...`, 'info'); try { await closePosition(symbol); showToast(`${symbol} başarıyla kapatıldı.`, 'success'); await loadDynamicData(); } catch (err) { showToast(err.message, 'error'); } finally { setConfirmationDetails(null); } }, [closePosition, showToast, loadDynamicData]);
+    const handleRefreshPnl = useCallback(async (symbol) => { setRefreshingSymbol(symbol); try { await refreshPnl(symbol); await loadDynamicData(); } catch(err) { showToast(err.message, 'error');} finally { setRefreshingSymbol(null); }}, [refreshPnl, loadDynamicData, showToast]);
     const handleReanalyze = useCallback(async (symbol) => { setAnalyzingSymbol(symbol); showToast(`${symbol} yeniden analiz ediliyor...`, 'info'); try { const result = await reanalyzePosition(symbol); setReanalysisResult(result); } catch (err) { showToast(err.message, 'error'); } finally { setAnalyzingSymbol(null); } }, [reanalyzePosition, showToast]);
-    const handleSaveSettings = async () => { showToast('Ayarlar kaydediliyor...', 'info'); try { await saveSettings(tempSettings); showToast('Ayarlar başarıyla kaydedildi.', 'success'); setIsSettingsModalVisible(false); await loadAllData(); } catch (err) { showToast(err.message, 'error'); }};
-    const handleGroupAction = async (actionType) => { const actions = { 'close-all': { title: 'Tümünü Kapat', confirm: "Tüm açık pozisyonları kapatmak istediğinizden emin misiniz?", apiCall: auth.closeAllPositions }, 'close-profitable': { title: 'Kârı Al', confirm: "Kârda olan tüm pozisyonları kapatmak istediğinizden emin misiniz?", apiCall: auth.closeProfitablePositions }, 'close-losing': { title: 'Zararı Kes', confirm: "Zararda olan tüm pozisyonları kapatmak istediğinizden emin misiniz?", apiCall: auth.closeLosingPositions }, 'reanalyze-all': { title: 'Toplu Analiz', confirm: "Tüm açık pozisyonları AI ile yeniden analiz etmek istiyor musunuz? Bu işlem API kredisi kullanacaktır.", apiCall: async () => { const results = await auth.reanalyzeAllPositions(); setBulkReanalysisResults(results); } } }; const action = actions[actionType]; if (!action) return; setConfirmationDetails({ title: action.title, message: action.confirm, onConfirm: async () => { setConfirmationDetails(null); setIsGroupActionLoading(true); try { const result = await action.apiCall(); if(result?.message) showToast(result.message, 'info'); if(actionType !== 'reanalyze-all') { setTimeout(() => loadAllData(), 2000); } } catch (err) { showToast(err.message, 'error'); } finally { setIsGroupActionLoading(false); } } }); };
+    const handleGroupAction = async (actionType) => { const actions = { 'close-all': { title: 'Tümünü Kapat', confirm: "Tüm açık pozisyonları kapatmak istediğinizden emin misiniz?", apiCall: auth.closeAllPositions }, 'close-profitable': { title: 'Kârı Al', confirm: "Kârda olan tüm pozisyonları kapatmak istediğinizden emin misiniz?", apiCall: auth.closeProfitablePositions }, 'close-losing': { title: 'Zararı Kes', confirm: "Zararda olan tüm pozisyonları kapatmak istediğinizden emin misiniz?", apiCall: auth.closeLosingPositions }, 'reanalyze-all': { title: 'Toplu Analiz', confirm: "Tüm açık pozisyonları AI ile yeniden analiz etmek istiyor musunuz? Bu işlem API kredisi kullanacaktır.", apiCall: async () => { const results = await auth.reanalyzeAllPositions(); setBulkReanalysisResults(results); } } }; const action = actions[actionType]; if (!action) return; setConfirmationDetails({ title: action.title, message: action.confirm, onConfirm: async () => { setConfirmationDetails(null); setIsGroupActionLoading(true); try { const result = await action.apiCall(); if(result?.message) showToast(result.message, 'info'); if(actionType !== 'reanalyze-all') { setTimeout(() => loadDynamicData(), 2000); } } catch (err) { showToast(err.message, 'error'); } finally { setIsGroupActionLoading(false); } } }); };
 
-    if (!isDataLoaded) return ( <div className="bg-gray-900 min-h-screen flex justify-center items-center text-white"><Loader2 className="animate-spin text-white mr-4" size={48} />Veriler yükleniyor...</div> );
+    // Eğer ayarlar veya dinamik veri henüz yüklenmediyse bir yükleme ekranı göster
+    if (!isDataLoaded || Object.keys(settings).length === 0) {
+        return (
+            <div className="bg-gray-900 min-h-screen flex justify-center items-center text-white">
+                <Loader2 className="animate-spin text-white mr-4" size={48} />
+                Uygulama verileri ve ayarlar yükleniyor...
+            </div>
+        );
+    }
 
     return (
         <>
-            <Header appVersion={settings.APP_VERSION || "4.3.0"} onSettingsClick={() => setIsSettingsModalVisible(true)} isLoading={isLoading && !isDataLoaded} />
+            <Header appVersion={settings.APP_VERSION || "..."} onSettingsClick={() => setIsSettingsModalVisible(true)} isLoading={isLoading && !isDataLoaded} />
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                 <NewAnalysis onAnalyze={handleAnalysis} isAnalyzing={isAnalyzing} symbol={analysisSymbol} setSymbol={setAnalysisSymbol} timeframe={analysisTimeframe} setTimeframe={setAnalysisTimeframe}/>
                 <ProactiveScanner onScan={handleRunScan} isScanning={isScanning} />
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <StatCard title="Güncel Bakiye" isLoading={isLoading} value={`${(stats.wallet_balance || 0).toFixed(2)} USDT`} valueClassName="text-blue-400" icon={<Wallet size={20} className="text-gray-500" />} tooltip="Borsadaki toplam vadeli işlem cüzdanı bakiyesi."/>
                 <StatCard title="Toplam P&L" isLoading={isLoading} value={`${(stats.total_pnl || 0).toFixed(2)} USDT`} valueClassName={(stats.total_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'} />
                 <StatCard title="Kazanma Oranı" isLoading={isLoading} value={`${(stats.win_rate || 0).toFixed(2)}%`} />
                 <StatCard title="Aktif AI Modeli" isLoading={isLoading} value={stats.active_model || "..."} valueClassName="text-sky-400 text-lg" icon={<Cpu size={20} className="text-gray-500" />} />
             </div>
+            
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
                 <PnlChart chartData={chartData} isLoading={isLoading && !isDataLoaded} />
                 <ActivePositions positions={activePositions} onClose={handleAttemptClosePosition} onRefresh={handleRefreshPnl} onReanalyze={handleReanalyze} refreshingSymbol={refreshingSymbol} analyzingSymbol={analyzingSymbol} onGroupAction={handleGroupAction} isLoadingAction={isGroupActionLoading} />
             </div>
+
             <div className="bg-gray-800 p-4 sm:p-6 rounded-xl border border-gray-700">
                 <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-semibold text-white">İşlem Geçmişi</h2><div className="flex items-center gap-2"><input type="text" placeholder="Sembol ara..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-white placeholder-gray-500 w-40"/></div></div>
                 <TradeHistory history={filteredHistory} isLoading={isLoading && !isDataLoaded} onRowClick={(trade) => setSelectedTradeForChart(trade)} />
             </div>
+            
             <LogPanel logs={logs} isLoading={isLoading && !isDataLoaded} />
             
             {/* Modal Pencereler */}
-            <SettingsModal isVisible={isSettingsModalVisible} onClose={() => setIsSettingsModalVisible(false)} settingsData={tempSettings} onSave={handleSaveSettings} onSettingsChange={(key, value) => setTempSettings(prev => ({ ...prev, [key]: value }))} />
+            <SettingsModal 
+                isVisible={isSettingsModalVisible} 
+                onClose={() => setIsSettingsModalVisible(false)} 
+                settingsData={tempSettings} 
+                onSave={handleSaveSettings} 
+                onSettingsChange={(key, value) => setTempSettings(prev => ({ ...prev, [key]: value }))} 
+            />
             <AnalysisResultModal result={analysisResult} isVisible={!!analysisResult} onClose={() => setAnalysisResult(null)} onConfirmTrade={handleConfirmTrade} isOpeningTrade={openingTradeSymbol === analysisResult?.symbol} />
             <TradeChartModal isVisible={!!selectedTradeForChart} onClose={() => setSelectedTradeForChart(null)} trade={selectedTradeForChart} />
             <ReanalysisResultModal result={reanalysisResult} isVisible={!!reanalysisResult} onClose={() => setReanalysisResult(null)} onConfirmClose={() => { setReanalysisResult(null); handleAttemptClosePosition(reanalysisResult.symbol); }} />

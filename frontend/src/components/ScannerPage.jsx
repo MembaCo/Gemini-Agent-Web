@@ -3,10 +3,94 @@ import { useAuth } from '../context/AuthContext';
 import { ScanSearch, PlayCircle, Loader2, Bot, RefreshCw, SlidersHorizontal, X, Info, Save } from 'lucide-react';
 import { Modal, Switch, TooltipWrapper, AnalysisResultModal } from './SharedComponents';
 
+// YENİ: Tarayıcıya özel ayar tanımlamaları
+const scannerSettingDefinitions = {
+    'PROACTIVE_SCAN_USE_GAINERS_LOSERS': {
+        label: "En Çok Yükselen/Düşenleri Kullan",
+        description: "Aday listesine, borsanın anlık 'En Çok Değer Kazananlar' ve 'En Çok Değer Kaybedenler' listesindeki coinleri dahil eder. Piyasada o an hareketli olan coinleri yakalamak için etkilidir."
+    },
+    'PROACTIVE_SCAN_TOP_N': {
+        label: "Yükselen/Düşen Listesi Limiti",
+        description: "Yukarıdaki 'En Çok Yükselen/Düşenler' listesinden kaç adet coinin taramaya dahil edileceğini belirler. Örneğin, 10 değeri en çok yükselen ilk 10 ve en çok düşen ilk 10 coini alır."
+    },
+    'PROACTIVE_SCAN_USE_VOLUME_SPIKE': {
+        label: "Hacim Patlamalarını Kullan",
+        description: "Aday listesine, işlem hacminde ani ve anormal bir artış yaşayan ('Hacim Patlaması') coinleri dahil eder. Bu, genellikle bir haber veya büyük bir alım/satım dalgasının habercisidir."
+    },
+    'PROACTIVE_SCAN_VOLUME_TIMEFRAME': {
+        label: "Hacim Analizi Zaman Aralığı",
+        description: "Hacim patlaması analizinin hangi zaman aralığındaki mumlara göre yapılacağını belirler (örn: 1h, 4h)."
+    },
+    'PROACTIVE_SCAN_VOLUME_PERIOD': {
+        label: "Hacim Ortalaması Periyodu",
+        description: "Bir hacim patlamasını tespit etmek için, son mumun hacminin geçmiş kaç mumun ortalamasıyla karşılaştırılacağını belirler."
+    },
+    'PROACTIVE_SCAN_VOLUME_MULTIPLIER': {
+        label: "Hacim Patlaması Çarpanı",
+        description: "Son mumun hacminin, geçmiş hacim ortalamasının en az kaç katı olması gerektiğini belirtir. Örneğin, 5.0 değeri, hacmin ortalamanın 5 katı veya daha fazla olması gerektiğini ifade eder."
+    },
+    'PROACTIVE_SCAN_MIN_VOLUME_USDT': {
+        label: "Minimum 24s Hacim (USDT)",
+        description: "Taranacak coinler için minimum 24 saatlik işlem hacmi (USDT cinsinden). Bu, 'toz' olarak tabir edilen çok düşük hacimli ve riskli coinleri filtrelemek için kullanılır."
+    },
+    'PROACTIVE_SCAN_BLACKLIST': {
+        label: "Kara Liste (Virgülle Ayırın)",
+        description: "Bu listedeki coinler (örn: SHIB,PEPE,DOGE), diğer tüm koşulları sağlasalar bile taramalara asla dahil edilmez."
+    },
+    'PROACTIVE_SCAN_WHITELIST': {
+        label: "Beyaz Liste (Virgülle Ayırın)",
+        description: "Bu listedeki coinler (örn: BTC,ETH), başka hiçbir koşula bakılmaksızın her tarama döngüsünde mutlaka analize dahil edilir."
+    }
+};
+
 const ScannerSettingsModal = ({ settings, isVisible, onClose, onSave, onSettingsChange }) => {
-    const settingDefinitions = { 'PROACTIVE_SCAN_ENABLED': { description: "Aktifse, bot arka planda sürekli olarak piyasayı yeni işlem fırsatları için tarar." }, 'PROACTIVE_SCAN_INTERVAL_SECONDS': { description: "Proaktif Tarayıcının iki tarama döngüsü arasında kaç saniye bekleyeceğini belirler." }, 'PROACTIVE_SCAN_AUTO_CONFIRM': { description: "Tarayıcı bir fırsat bulduğunda, kullanıcı onayı olmadan otomatik olarak işlem açar. Yüksek risklidir." }, 'PROACTIVE_SCAN_USE_GAINERS_LOSERS': { description: "Tarama listesine Binance'in 'En Çok Yükselenler/Düşenler' listesini dahil eder." }, 'PROACTIVE_SCAN_TOP_N': { description: "Yükselenler/Düşenler listesinden kaç coinin analize dahil edileceği." }, 'PROACTIVE_SCAN_USE_VOLUME_SPIKE': { description: "Tarama listesine, işlem hacminde ani artış yaşayan ('Hacim Patlaması') coinleri dahil eder." }, 'PROACTIVE_SCAN_VOLUME_TIMEFRAME': { description: "Hacim analizi için kullanılacak zaman aralığı (örn: 1h, 4h)." }, 'PROACTIVE_SCAN_VOLUME_PERIOD': { description: "Hacim ortalaması için kaç mum geriye bakılacak." }, 'PROACTIVE_SCAN_VOLUME_MULTIPLIER': { description: "Son mumun hacmi, ortalamanın kaç katı olmalı." }, 'PROACTIVE_SCAN_MIN_VOLUME_USDT': { description: "Taranacak coinler için minimum 24 saatlik işlem hacmi (USDT cinsinden). Düşük hacimli coinleri filtreler." }, 'PROACTIVE_SCAN_BLACKLIST': { description: "Bu listedeki coinler (virgülle ayırın) taramalara asla dahil edilmez." }, 'PROACTIVE_SCAN_WHITELIST': { description: "Bu listedeki coinler (virgülle ayırın) her tarama döngüsünde mutlaka analize dahil edilir." }, };
-    const renderInput = (key, value) => { if (typeof value === 'boolean') { return <Switch checked={value} onChange={(checked) => onSettingsChange(key, checked)} />; } if (typeof value === 'number') { return <input type="number" step={key.includes('PERCENT') ? "0.1" : "1"} value={value} onChange={e => onSettingsChange(key, parseFloat(e.target.value) || 0)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-28 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />; } if (Array.isArray(value)) { return <input type="text" value={value.join(', ')} onChange={e => onSettingsChange(key, e.target.value.split(',').map(s => s.trim().toUpperCase()).filter(s => s))} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />; } return <input type="text" value={value} onChange={e => onSettingsChange(key, e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1 w-full text-white" />; };
-    return ( <Modal isVisible={isVisible} onClose={onClose}><div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-bold text-white flex items-center gap-2"><SlidersHorizontal/> Tarayıcı Ayarları</h2><button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700"><X size={24} /></button></div><div className="space-y-4 max-h-[60vh] overflow-y-auto pr-4">{Object.keys(settings).sort().map(key => ( <div key={key} className="flex justify-between items-center border-b border-gray-700/50 py-3 gap-4"><div className="flex items-center gap-2"><label className="text-gray-300 text-sm">{key}</label>{settingDefinitions[key] && ( <TooltipWrapper content={settingDefinitions[key].description}><Info size={14} className="text-gray-500 cursor-help" /></TooltipWrapper> )}</div>{renderInput(key, settings[key])}</div> ))}</div><div className="mt-6 flex justify-end"><button onClick={() => onSave(settings)} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md flex items-center gap-2"><Save size={18}/> Ayarları Kaydet ve Uygula</button></div></Modal> );
+    if (!isVisible) return null;
+
+    const renderInput = (key, value) => {
+        const selectOptions = { "PROACTIVE_SCAN_VOLUME_TIMEFRAME": ["15m", "1h", "4h", "1d"] };
+        if (key in selectOptions) {
+            return <select value={value} onChange={e => onSettingsChange(key, e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {selectOptions[key].map(o => <option key={o} value={o}>{o}</option>)}
+            </select>;
+        }
+        if (typeof value === 'boolean') {
+            return <Switch checked={value} onChange={(checked) => onSettingsChange(key, checked)} />;
+        }
+        if (typeof value === 'number') {
+            return <input type="number" step={key.includes('MULTIPLIER') ? "0.1" : "1"} value={value} onChange={e => onSettingsChange(key, parseFloat(e.target.value) || 0)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-28 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />;
+        }
+        if (Array.isArray(value)) {
+            return <input type="text" placeholder="Değerleri virgülle ayırın..." value={value.join(', ')} onChange={e => onSettingsChange(key, e.target.value.split(',').map(s => s.trim().toUpperCase()).filter(s => s))} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />;
+        }
+        return <input type="text" value={value} onChange={e => onSettingsChange(key, e.target.value)} className="bg-gray-700 border border-gray-600 rounded-md px-3 py-1 w-full text-white" />;
+    };
+
+    return (
+        <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-2xl">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2"><SlidersHorizontal/> Fırsat Tarayıcı Ayarları</h2>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700"><X size={24} /></button>
+            </div>
+            <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-4 -mr-4">
+                {Object.keys(scannerSettingDefinitions).map(key => (
+                    <div key={key} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center border-b border-gray-700/50 pb-4">
+                        <div>
+                            <label className="text-gray-200 font-medium">{scannerSettingDefinitions[key].label}</label>
+                            <p className="text-xs text-gray-400 mt-1">{scannerSettingDefinitions[key].description}</p>
+                        </div>
+                        <div className="flex justify-start md:justify-end">
+                            {renderInput(key, settings[key])}
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <div className="mt-6 flex justify-end">
+                <button onClick={() => onSave(settings)} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md flex items-center gap-2">
+                    <Save size={18}/> Ayarları Kaydet ve Uygula
+                </button>
+            </div>
+        </Modal>
+    );
 };
 
 export const ScannerPage = () => {
@@ -22,11 +106,57 @@ export const ScannerPage = () => {
     const [scannerSettings, setScannerSettings] = useState({});
     const [isOpeningTrade, setIsOpeningTrade] = useState(false);
 
-    const loadScannerSettings = useCallback(async () => { try { const allSettings = await fetchSettings(); const filteredSettings = Object.keys(allSettings).filter(key => key.startsWith('PROACTIVE_SCAN_')).reduce((obj, key) => { obj[key] = allSettings[key]; return obj; }, {}); setScannerSettings(filteredSettings); } catch (error) { showToast("Tarayıcı ayarları alınamadı: " + error.message, "error"); } }, [fetchSettings, showToast]);
-    const handleSaveSettings = useCallback(async (newSettings) => { showToast('Tarayıcı ayarları kaydediliyor...', 'info'); try { const result = await saveSettings(newSettings); showToast(result.message, 'success'); setIsSettingsModalVisible(false); loadScannerSettings(); } catch (err) { showToast(err.message, 'error'); } }, [saveSettings, showToast, loadScannerSettings]);
-    const handleSettingsChange = (key, value) => { setScannerSettings(prev => ({...prev, [key]: value})); };
-    const loadInitialData = useCallback(async () => { setIsFetchingInitial(true); try { await Promise.all([ (async () => { const initialCandidates = await fetchScannerCandidates(); setCandidates(initialCandidates); })(), loadScannerSettings() ]); } catch (error) { showToast(`Sayfa verileri yüklenemedi: ${error.message}`, 'error'); } finally { setIsFetchingInitial(false); } }, [fetchScannerCandidates, loadScannerSettings, showToast]);
-    useEffect(() => { loadInitialData(); }, [loadInitialData]);
+    const loadScannerSettings = useCallback(async () => {
+        try {
+            const allSettings = await fetchSettings();
+            // Yalnızca tarayıcı ile ilgili ayarları filtrele
+            const filteredSettings = Object.keys(allSettings)
+                .filter(key => key.startsWith('PROACTIVE_SCAN_'))
+                .reduce((obj, key) => {
+                    obj[key] = allSettings[key];
+                    return obj;
+                }, {});
+            setScannerSettings(filteredSettings);
+        } catch (error) {
+            showToast("Tarayıcı ayarları alınamadı: " + error.message, "error");
+        }
+    }, [fetchSettings, showToast]);
+
+    const handleSaveSettings = useCallback(async (newSettings) => {
+        showToast('Tarayıcı ayarları kaydediliyor...', 'info');
+        try {
+            // Sadece bu modalda değiştirilen ayarları kaydet
+            await saveSettings(newSettings);
+            showToast('Tarayıcı ayarları başarıyla kaydedildi.', 'success');
+            setIsSettingsModalVisible(false);
+            // Ayarları yeniden yükle
+            loadScannerSettings();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    }, [saveSettings, showToast, loadScannerSettings]);
+
+    const handleSettingsChange = (key, value) => {
+        setScannerSettings(prev => ({...prev, [key]: value}));
+    };
+
+    const loadInitialData = useCallback(async () => {
+        setIsFetchingInitial(true);
+        try {
+            await Promise.all([
+                (async () => { const initialCandidates = await fetchScannerCandidates(); setCandidates(initialCandidates); })(),
+                loadScannerSettings()
+            ]);
+        } catch (error) {
+            showToast(`Sayfa verileri yüklenemedi: ${error.message}`, 'error');
+        } finally {
+            setIsFetchingInitial(false);
+        }
+    }, [fetchScannerCandidates, loadScannerSettings, showToast]);
+
+    useEffect(() => {
+        loadInitialData();
+    }, [loadInitialData]);
     
     const handleScan = async () => {
         setIsScanning(true);

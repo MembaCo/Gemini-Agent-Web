@@ -10,17 +10,15 @@ from google.api_core.exceptions import ResourceExhausted
 import database 
 from core import app_config, agent
 from core.trader import open_new_trade, TradeException
-# --- DÜZELTME BAŞLANGICI ---
-# Hatalı importlar kaldırıldı ve doğru, önbellekli fonksiyon import edildi.
-from tools import (
+# Hatalı çağrıyı önlemek için mantık fonksiyonunu doğrudan import ediyoruz
+from tools.exchange import (
     get_top_gainers_losers, 
     get_volume_spikes, 
-    get_technical_indicators, 
-    get_price_with_cache  # Önbellekli fonksiyonu kullan
+    _get_technical_indicators_logic, 
+    get_price_with_cache
 )
 from tools.utils import _get_unified_symbol
-from tools import exchange as exchange_tools # 'exchange' objesine doğrudan erişim için
-# --- DÜZELTME SONU ---
+from tools import exchange as exchange_tools
 
 CONCURRENCY_LIMIT = 10
 semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
@@ -81,7 +79,7 @@ async def get_interactive_scan_candidates() -> list[dict]:
     
     async def fetch_indicators(cand):
         async with semaphore:
-            indicators_result = await asyncio.to_thread(get_technical_indicators, f"{cand['symbol']},{entry_timeframe}")
+            indicators_result = await asyncio.to_thread(_get_technical_indicators_logic, cand['symbol'], entry_timeframe)
         if indicators_result.get("status") == "success":
             cand['indicators'] = indicators_result['data']
             cand['timeframe'] = entry_timeframe
@@ -114,56 +112,71 @@ async def execute_single_scan_cycle():
     final_candidates_to_analyze = []
     
     async def pre_filter_candidate(candidate):
+        symbol = candidate['symbol']
         async with semaphore:
             try:
                 entry_timeframe = config.get('PROACTIVE_SCAN_ENTRY_TIMEFRAME', '15m')
-                # OHLCV verisini çek
-                bars = await asyncio.to_thread(exchange_tools.exchange.fetch_ohlcv, candidate['symbol'], timeframe=entry_timeframe, limit=100)
+                bars = await asyncio.to_thread(exchange_tools.exchange.fetch_ohlcv, symbol, timeframe=entry_timeframe, limit=100)
                 if not bars or len(bars) < 50:
-                    database.log_event("DEBUG", "Scanner", f"{candidate['symbol']} ön filtrelemesi atlandı: Yetersiz mum verisi.")
+                    logging.debug(f"Ön Filtre BAŞARISIZ ({symbol}): Yetersiz mum verisi.")
                     return None
                 
                 df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 
                 # İndikatörleri hesapla
-                df.ta.rsi(length=config.get('PROACTIVE_SCAN_RSI_PERIOD', 14), append=True)
-                df.ta.adx(length=config.get('PROACTIVE_SCAN_ADX_PERIOD', 14), append=True)
-                df.ta.atr(length=config.get('PROACTIVE_SCAN_ATR_PERIOD', 14), append=True)
-                df['volume_ema'] = df['volume'].ewm(span=config.get('PROACTIVE_SCAN_VOLUME_AVG_PERIOD', 20), adjust=False).mean()
+                rsi_period = config.get('PROACTIVE_SCAN_RSI_PERIOD', 14)
+                adx_period = config.get('PROACTIVE_SCAN_ADX_PERIOD', 14)
+                atr_period = config.get('PROACTIVE_SCAN_ATR_PERIOD', 14)
+                volume_avg_period = config.get('PROACTIVE_SCAN_VOLUME_AVG_PERIOD', 20)
+
+                df.ta.rsi(length=rsi_period, append=True)
+                df.ta.adx(length=adx_period, append=True)
+                df.ta.atr(length=atr_period, append=True)
+                df['volume_ema'] = df['volume'].ewm(span=volume_avg_period, adjust=False).mean()
 
                 df.dropna(inplace=True)
-                if df.empty: return None
+                if df.empty:
+                    logging.debug(f"Ön Filtre BAŞARISIZ ({symbol}): Gösterge hesaplaması sonrası veri kalmadı.")
+                    return None
 
                 last = df.iloc[-1]
-                rsi = last.get(f"RSI_{config.get('PROACTIVE_SCAN_RSI_PERIOD', 14)}")
-                adx = last.get(f"ADX_{config.get('PROACTIVE_SCAN_ADX_PERIOD', 14)}")
-                atr = last.get(f"ATRr_{config.get('PROACTIVE_SCAN_ATR_PERIOD', 14)}")
+                rsi = last.get(f"RSI_{rsi_period}")
+                adx = last.get(f"ADX_{adx_period}")
+                atr = last.get(f"ATRr_{atr_period}")
                 
-                if rsi is None or adx is None or atr is None: return None
+                if rsi is None or adx is None or atr is None:
+                    logging.debug(f"Ön Filtre BAŞARISIZ ({symbol}): Gösterge değeri (RSI/ADX/ATR) hesaplanamadı.")
+                    return None
 
-                rsi_lower, rsi_upper = config.get('PROACTIVE_SCAN_RSI_LOWER', 35), config.get('PROACTIVE_SCAN_RSI_UPPER', 65)
+                # Filtreleme Mantığı
+                rsi_lower = config.get('PROACTIVE_SCAN_RSI_LOWER', 35)
+                rsi_upper = config.get('PROACTIVE_SCAN_RSI_UPPER', 65)
                 adx_threshold = config.get('PROACTIVE_SCAN_ADX_THRESHOLD', 20)
                 
                 if not ((rsi < rsi_lower or rsi > rsi_upper) and adx > adx_threshold):
+                    logging.debug(f"Ön Filtre BAŞARISIZ ({symbol}): RSI ({rsi:.1f}) veya ADX ({adx:.1f}) kriterini geçemedi.")
                     return None
 
                 if config.get('PROACTIVE_SCAN_USE_VOLATILITY_FILTER', True):
                     atr_threshold = config.get('PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT', 0.5)
+                    # pandas-ta ATRr, sonucu 100 ile çarparak yüzde olarak verir.
                     if atr < atr_threshold:
+                        logging.debug(f"Ön Filtre BAŞARISIZ ({symbol}): Yetersiz volatilite (ATR: {atr:.2f}% < {atr_threshold}%)")
                         return None
                 
                 if config.get('PROACTIVE_SCAN_USE_VOLUME_FILTER', True):
                     volume_multiplier = config.get('PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER', 1.2)
                     if last['volume'] < last['volume_ema'] * volume_multiplier:
+                        logging.debug(f"Ön Filtre BAŞARISIZ ({symbol}): Yetersiz hacim onayı (Son Hacim: {last['volume']:.0f} < Ort. Hacim: {last['volume_ema']:.0f} * {volume_multiplier})")
                         return None
                 
-                log_message = f"Ön Filtre BAŞARILI: {candidate['symbol']} (RSI:{rsi:.1f}, ADX:{adx:.1f}, ATR:{atr:.2f}%, Hacim:{last['volume']:.0f})"
+                log_message = f"Ön Filtre BAŞARILI: {symbol} (RSI:{rsi:.1f}, ADX:{adx:.1f}, ATR:{atr:.2f}%)"
                 logging.info(log_message)
                 database.log_event("INFO", "Scanner", log_message)
                 return candidate
 
             except Exception as e:
-                logging.error(f"Ön filtreleme sırasında {candidate['symbol']} için hata: {e}")
+                logging.error(f"Ön filtreleme sırasında {symbol} için hata: {e}")
                 return None
 
     if config.get("PROACTIVE_SCAN_PREFILTER_ENABLED", True):
@@ -195,19 +208,17 @@ async def execute_single_scan_cycle():
         symbol = candidate['symbol']
         async with semaphore:
             try:
-                # --- DÜZELTME ---
-                # Fiyat çekme işlemi artık önbellek destekli fonksiyon üzerinden yapılıyor.
                 current_price_val = await asyncio.to_thread(get_price_with_cache, symbol)
                 if not current_price_val:
                     return {"type": "error", "symbol": symbol, "message": "Fiyat bilgisi alınamadı."}
 
-                entry_indicators_result = await asyncio.to_thread(get_technical_indicators, f"{symbol},{entry_timeframe}")
+                entry_indicators_result = await asyncio.to_thread(_get_technical_indicators_logic, symbol, entry_timeframe)
                 if entry_indicators_result.get("status") != "success":
                     return {"type": "error", "symbol": symbol, "message": f"Teknik veri hatası: {entry_indicators_result.get('message')}"}
 
                 final_prompt = ""
-                if use_mta:
-                    trend_indicators_result = await asyncio.to_thread(get_technical_indicators, f"{symbol},{trend_timeframe}")
+                if use_mta and entry_timeframe != trend_timeframe:
+                    trend_indicators_result = await asyncio.to_thread(_get_technical_indicators_logic, symbol, trend_timeframe)
                     if trend_indicators_result.get("status") != "success":
                         return {"type": "error", "symbol": symbol, "message": f"Trend verisi hatası: {trend_indicators_result.get('message')}"}
                     final_prompt = agent.create_mta_analysis_prompt(symbol, current_price_val, entry_timeframe, entry_indicators_result["data"], trend_timeframe, trend_indicators_result["data"])
@@ -223,18 +234,23 @@ async def execute_single_scan_cycle():
                 if parsed_data.get('recommendation') in ['AL', 'SAT']:
                     if config.get('PROACTIVE_SCAN_AUTO_CONFIRM'):
                         try:
-                            # DÜZELTME: 'reason' parametresi eklendi
-                            await asyncio.to_thread(
-                                open_new_trade, 
+                            # NOT: open_new_trade senkron bir fonksiyon olduğu için doğrudan çağrılabilir
+                            open_new_trade(
                                 symbol=symbol, 
                                 recommendation=parsed_data['recommendation'], 
                                 timeframe=entry_timeframe, 
                                 current_price=current_price_val,
                                 reason=parsed_data.get('reason', 'Otomatik Tarayıcı')
                             )
+                            return {"type": "success", "symbol": symbol, "message": f"Otomatik pozisyon açıldı: {parsed_data['recommendation']}", "data": parsed_data}
                         except TradeException as e:
-                            return {"type": "success", "symbol": symbol, "message": f"Otomatik pozisyon açıldı: {parsed_data['recommendation']}"}
-                        
+                             logging.error(f"Otomatik işlem açılırken hata ({symbol}): {e}")
+                             return {"type": "error", "symbol": symbol, "message": f"Otomatik işlem hatası: {e}"}
+                    else:
+                        return {"type": "opportunity", "data": parsed_data}
+                
+                return {"type": "neutral", "data": parsed_data}
+
             except ResourceExhausted:
                 logging.critical(f"Proaktif tarama döngüsü, tüm modellerin kotası dolduğu için durduruldu. Sembol: {symbol}")
                 return {"type": "critical", "symbol": symbol, "message": f"Tüm AI modellerinin kotası doldu."}
@@ -245,24 +261,22 @@ async def execute_single_scan_cycle():
     analysis_tasks = [analyze_symbol(c) for c in final_candidates_to_analyze]
     analysis_results = await asyncio.gather(*analysis_tasks)
     
-    for res in analysis_results:
-        if res:
-            if res['type'] == 'success': auto_trades_opened.append(res['symbol'])
-            elif res['type'] == 'opportunity': opportunities_found.append(res['data'])
-            elif res['type'] in ['error', 'critical']: data_errors += 1
-
-    summary_msg = f"Tarama tamamlandı. Onay bekleyen: {len(opportunities_found)}, Otomatik açılan: {len(auto_trades_opened)}, Hata: {data_errors}"
-    logging.info(f"PROAKTİF TARAYICI DÖNGÜSÜ TAMAMLANDI. Taranan: {len(initial_candidates)}, Ön Filtreden Geçen: {len(final_candidates_to_analyze)}, AI Analizi Yapılan: {len(analysis_results)}, Otomatik Açılan: {len(auto_trades_opened)}, Onay Bekleyen: {len(opportunities_found)}, Hata: {data_errors}")
+    final_opportunities = [res['data'] for res in analysis_results if res and res.get('type') == 'opportunity']
+    final_auto_trades = [res['data'] for res in analysis_results if res and res.get('type') == 'success']
+    final_errors = [res for res in analysis_results if res and res.get('type') in ['error', 'critical']]
+    
+    summary_msg = f"Tarama tamamlandı. Onay bekleyen: {len(final_opportunities)}, Otomatik açılan: {len(final_auto_trades)}, Hata: {len(final_errors)}"
+    logging.info(f"PROAKTİF TARAYICI DÖNGÜSÜ TAMAMLANDI. Taranan: {len(initial_candidates)}, Ön Filtreden Geçen: {len(final_candidates_to_analyze)}, AI Analizi Yapılan: {len(analysis_tasks)}, {summary_msg}")
     database.log_event("INFO", "Scanner", summary_msg)
 
     return {
         "summary": {
             "total_scanned": len(initial_candidates), 
             "pre_filtered_count": len(final_candidates_to_analyze), 
-            "ai_analyzed": len(analysis_results), 
-            "opportunities_found": len(opportunities_found), 
-            "auto_trades_opened": len(auto_trades_opened), 
-            "data_errors": data_errors
+            "ai_analyzed": len(analysis_tasks), 
+            "opportunities_found": len(final_opportunities), 
+            "auto_trades_opened": len(final_auto_trades), 
+            "data_errors": len(final_errors)
         },
         "details": analysis_results
     }

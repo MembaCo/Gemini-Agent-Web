@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 from langchain.tools import tool
 from tenacity import retry, stop_after_attempt, wait_exponential
 from pathlib import Path
-# YENİ: requests ve HTTPAdapter import ediliyor
 import requests
 from requests.adapters import HTTPAdapter
 
@@ -46,8 +45,6 @@ def initialize_exchange(market_type: str):
 
     logging.info(f"API Anahtarları bulundu. Testnet Modu: {use_testnet}, Piyasa Tipi: {market_type}")
     
-    # --- YENİ DÜZELTME BAŞLANGICI ---
-    # Genişletilmiş bağlantı havuzuna sahip özel bir session oluştur
     session = requests.Session()
     adapter = HTTPAdapter(pool_connections=50, pool_maxsize=50)
     session.mount('https://', adapter)
@@ -57,15 +54,12 @@ def initialize_exchange(market_type: str):
         "options": {
             "defaultType": market_type.lower(),
             "warnOnFetchOpenOrdersWithoutSymbol": False,
-            # Timestamp (recvWindow) hatasını önlemek için zaman senkronizasyonunu etkinleştir
             "adjustForTime": True,
         },
         "enableRateLimit": True, 
         'timeout': 30000,
-        # ccxt'nin özel session'ı kullanmasını sağla
         'session': session,
     }
-    # --- YENİ DÜZELTME SONU ---
 
     exchange = ccxt.binance(config_data)
     
@@ -81,7 +75,74 @@ def initialize_exchange(market_type: str):
         exchange = None
         raise e
 
-# ... dosyanın geri kalanı aynı kalabilir ...
+def _get_technical_indicators_logic(symbol: str, timeframe: str) -> dict:
+    """
+    Teknik göstergeleri hesaplayan ana mantık fonksiyonu.
+    Bu fonksiyon LangChain @tool dekoratörünü içermez.
+    """
+    if not exchange:
+        return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
+    
+    unified_symbol = _get_unified_symbol(symbol)
+    request_symbol = unified_symbol.replace('/', '') if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future' else unified_symbol
+
+    try:
+        bars = exchange.fetch_ohlcv(request_symbol, timeframe=timeframe, limit=500)
+        if not bars:
+            return {"status": "error", "message": f"Geçmiş veri bulunamadı: {unified_symbol}."}
+        
+        df = pd.DataFrame(bars, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        
+        required_data_points = 100 
+        if len(df) < required_data_points:
+            return {"status": "error", "message": f"Teknik analiz için yetersiz veri: {len(df)}/{required_data_points} mum çubuğu bulundu."}
+        
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        df.dropna(subset=['open', 'high', 'low', 'close', 'volume'], inplace=True)
+        
+        if len(df) < required_data_points:
+            return {"status": "error", "message": f"Veri temizliğinden sonra yetersiz veri: {len(df)}/{required_data_points} mum çubuğu kaldı."}
+
+        df.ta.rsi(length=14, append=True)
+        df.ta.adx(length=14, append=True)
+        df.dropna(inplace=True)
+
+        if df.empty:
+            return {"status": "error", "message": f"Hesaplama sonrası geçerli veri kalmadı. Sembol: {unified_symbol}"}
+
+        last = df.iloc[-1]
+        rsi_val = last.get('RSI_14')
+        adx_val = last.get('ADX_14')
+
+        if rsi_val is None or pd.isna(rsi_val) or adx_val is None or pd.isna(adx_val):
+            return {"status": "error", "message": f"Hesaplama sonrası geçersiz gösterge değeri. Sembol: {unified_symbol}"}
+
+        indicators = {"RSI": float(rsi_val), "ADX": float(adx_val)}
+        return {"status": "success", "data": indicators}
+        
+    except Exception as e:
+        logging.error(f"Teknik gösterge alınırken genel hata ({unified_symbol}, {timeframe}): {e}", exc_info=True)
+        return {"status": "error", "message": f"Beklenmedik bir hata oluştu: {str(e)}"}
+
+@tool
+def get_technical_indicators(symbol: str, timeframe: str) -> dict:
+    """
+    Belirtilen sembol ve zaman aralığı için teknik göstergeleri hesaplar.
+    Bu fonksiyon önbelleği yönetir ve LangChain aracı olarak kullanılır.
+    """
+    cache_key = f"indicators_{symbol}_{timeframe}"
+    cached_result = cache_manager.get(cache_key)
+    if cached_result:
+        return cached_result
+
+    result = _get_technical_indicators_logic(symbol, timeframe)
+
+    if result.get("status") == "success":
+        cache_manager.set(cache_key, result, ttl=180)
+        
+    return result
+
 def fetch_open_orders(symbol: str = None) -> list:
     """Borsadaki tüm açık emirleri veya belirtilen sembol için olanları çeker."""
     if not exchange:
@@ -127,7 +188,6 @@ def get_price_with_cache(symbol: str) -> float | None:
     price = _fetch_price_natively(symbol)
     
     if price is not None:
-        # Fiyatlar için kısa bir TTL (5 saniye) belirliyoruz.
         cache_manager.set(cache_key, price, ttl=5)
         
     return price
@@ -154,70 +214,6 @@ def get_market_price(symbol: str) -> str:
         return f"{symbol} için anlık piyasa fiyatı: {price}" if price is not None else f"HATA: {symbol} için fiyat bilgisi alınamadı."
     except Exception as e:
         return f"HATA: Fiyat alınamadı. Sembol: '{symbol}'. Hata: {e}"
-
-@tool
-def get_technical_indicators(symbol_and_timeframe: str) -> dict:
-    """
-    Belirtilen sembol ve zaman aralığı için teknik göstergeleri hesaplar.
-    """
-    cache_key = f"indicators_{symbol_and_timeframe}"
-    cached_result = cache_manager.get(cache_key)
-    if cached_result:
-        return cached_result
-
-    # ... (hesaplama mantığı aynı)
-    if not exchange:
-        return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
-    
-    symbol, timeframe = _parse_symbol_timeframe_input(symbol_and_timeframe)
-    
-    request_symbol = symbol
-    if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future':
-        request_symbol = symbol.replace('/', '')
-
-    try:
-        bars = exchange.fetch_ohlcv(request_symbol, timeframe=timeframe, limit=500)
-        if not bars:
-            return {"status": "error", "message": f"Geçmiş veri bulunamadı: {symbol}."}
-        
-        df = pd.DataFrame(bars, columns=["timestamp", "open", "high", "low", "close", "volume"])
-        
-        required_data_points = 100 
-        if len(df) < required_data_points:
-            return {"status": "error", "message": f"Teknik analiz için yetersiz veri: {len(df)}/{required_data_points} mum çubuğu bulundu."}
-        
-        for col in ['open', 'high', 'low', 'close', 'volume']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-        df.dropna(subset=['open', 'high', 'low', 'close', 'volume'], inplace=True)
-        
-        if len(df) < required_data_points:
-            return {"status": "error", "message": f"Veri temizliğinden sonra yetersiz veri: {len(df)}/{required_data_points} mum çubuğu kaldı."}
-
-        df.ta.rsi(length=14, append=True)
-        df.ta.adx(length=14, append=True)
-        
-        df.dropna(inplace=True)
-
-        if df.empty:
-            return {"status": "error", "message": f"Hesaplama sonrası geçerli veri kalmadı. Sembol: {symbol}"}
-
-        last = df.iloc[-1]
-        rsi_val = last.get('RSI_14')
-        adx_val = last.get('ADX_14')
-
-        if rsi_val is None or pd.isna(rsi_val) or adx_val is None or pd.isna(adx_val):
-            return {"status": "error", "message": f"Hesaplama sonrası geçersiz gösterge değeri. Sembol: {symbol}"}
-
-        indicators = {"RSI": float(rsi_val), "ADX": float(adx_val)}
-        result = {"status": "success", "data": indicators}
-        # İndikatörler için daha uzun bir TTL (180 saniye) belirliyoruz.
-        cache_manager.set(cache_key, result, ttl=180)
-        return result
-        
-    except Exception as e:
-        logging.error(f"Teknik gösterge alınırken genel hata ({symbol}): {e}", exc_info=True)
-        return {"status": "error", "message": f"Beklenmedik bir hata oluştu: {str(e)}"}
-
 
 def execute_trade_order(symbol: str, side: str, amount: float, price: float = None, stop_loss: float = None, take_profit: float = None, leverage: float = None, is_closing_order: bool = False) -> dict:
     """İşlem emri gönderir. Kapatma emirleri için 'reduceOnly' parametresini destekler."""
@@ -247,7 +243,6 @@ def execute_trade_order(symbol: str, side: str, amount: float, price: float = No
         order_type = app_config.settings.get('DEFAULT_ORDER_TYPE', 'LIMIT').lower()
         order = None
         
-        # --- YENİ: Kapatma emri için özel parametreler ---
         params = {}
         if is_closing_order and is_futures_market:
             params['reduceOnly'] = True
@@ -261,11 +256,9 @@ def execute_trade_order(symbol: str, side: str, amount: float, price: float = No
         fill_price = order.get('average') or order.get('price')
         if not fill_price:
             time.sleep(1)
-            # DÜZELTME: Sadece ilgili emir ID'sine ait işlemi sorgula
             trades = exchange.fetch_my_trades(request_symbol, limit=1)
             fill_price = trades[0]['price'] if trades else _fetch_price_natively(unified_symbol)
             
-        # Pozisyon açılışında SL/TP emirleri gönderiliyorsa, is_closing_order false olmalı.
         if stop_loss and take_profit and is_futures_market and not is_closing_order:
             opposite = 'sell' if side == 'buy' else 'buy'
             time.sleep(0.5)
@@ -329,11 +322,11 @@ def get_volume_spikes(timeframe: str, period: int, multiplier: float, min_volume
         logging.error(f"Hacim patlaması listesi alınırken genel hata: {e}", exc_info=True)
         return []
 
-def get_atr_value(symbol_and_timeframe: str) -> dict:
+def get_atr_value(symbol: str, timeframe: str) -> dict:
     if not exchange: return {"status": "error", "message": "Borsa bağlantısı başlatılmamış."}
     try:
-        symbol, timeframe = _parse_symbol_timeframe_input(symbol_and_timeframe)
-        request_symbol = symbol.replace('/', '') if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future' else symbol
+        unified_symbol = _get_unified_symbol(symbol)
+        request_symbol = unified_symbol.replace('/', '') if exchange.id == 'binance' and exchange.options.get('defaultType') == 'future' else unified_symbol
         bars = exchange.fetch_ohlcv(request_symbol, timeframe=timeframe, limit=200)
         if not bars or len(bars) < 20: return {"status": "error", "message": "Yetersiz veri"}
         df = pd.DataFrame(bars, columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -362,11 +355,7 @@ def get_open_positions_from_exchange() -> list:
     if not exchange or app_config.settings.get('DEFAULT_MARKET_TYPE') != 'future':
         return []
     try:
-        # DÜZELTME: `params` argümanı kaldırıldı. ccxt, borsa nesnesi başlatılırken
-        # verilen `defaultType` ayarını otomatik olarak kullanır. Bu, daha standart ve
-        # güvenilir bir yöntemdir ve 'hayalet pozisyon' sorununu çözer.
         positions = exchange.fetch_positions()
-        # Sadece miktarı sıfırdan büyük olan gerçek pozisyonları döndür
         return [p for p in positions if p.get('contracts') and float(p['contracts']) != 0]
     except Exception as e:
         logging.error(f"Borsadan pozisyonlar alınırken hata: {e}", exc_info=True)

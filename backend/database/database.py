@@ -8,11 +8,18 @@ import os
 
 from config_defaults import default_settings
 
-DATA_DIR = "data"
+# --- DÜZELTME BAŞLANGICI: Veritabanı Yolu Sabitlendi ---
+# Proje kök dizinini dinamik olarak bulur. Konteyner içindeki yol /app olacaktır.
+# Bu sayede betiğin nereden çalıştırıldığından bağımsız olarak yol her zaman doğru olur.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 DB_FILE = os.path.join(DATA_DIR, "trades.db")
+# --- DÜZELTME SONU ---
+
 
 def get_db_connection():
     """Veritabanı bağlantısı oluşturur ve döner."""
+    # Artık DB_FILE mutlak bir yol olduğu için bağlantı her zaman doğru dosyaya yapılır.
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
@@ -30,11 +37,11 @@ def _initialize_settings(conn):
     conn.commit()
 
 def init_db():
+    # DATA_DIR artık mutlak bir yol olduğu için doğru dizini oluşturacaktır.
     os.makedirs(DATA_DIR, exist_ok=True)
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        # YENİ: 'reason' sütunu eklendi
         cursor.execute('CREATE TABLE IF NOT EXISTS managed_positions (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL UNIQUE, side TEXT NOT NULL, amount REAL NOT NULL, initial_amount REAL, entry_price REAL NOT NULL, timeframe TEXT NOT NULL, leverage REAL NOT NULL, stop_loss REAL NOT NULL, initial_stop_loss REAL, take_profit REAL NOT NULL, partial_tp_executed BOOLEAN DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, pnl REAL DEFAULT 0, pnl_percentage REAL DEFAULT 0, reason TEXT)')
         cursor.execute('CREATE TABLE IF NOT EXISTS trade_history (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, side TEXT NOT NULL, amount REAL NOT NULL, entry_price REAL NOT NULL, close_price REAL NOT NULL, pnl REAL NOT NULL, status TEXT NOT NULL, timeframe TEXT, opened_at TIMESTAMP, closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         cursor.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, type TEXT NOT NULL)')
@@ -57,7 +64,6 @@ def init_db():
         if 'bailout_armed' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN bailout_armed BOOLEAN DEFAULT 0')
         if 'extremum_price' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN extremum_price REAL DEFAULT 0')
         if 'bailout_analysis_triggered' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN bailout_analysis_triggered BOOLEAN DEFAULT 0')
-        # YENİ: 'reason' sütunu yoksa ekle
         if 'reason' not in columns: cursor.execute('ALTER TABLE managed_positions ADD COLUMN reason TEXT')
 
         cursor.execute("PRAGMA table_info(trade_history)")
@@ -66,7 +72,7 @@ def init_db():
 
         conn.commit()
         _initialize_settings(conn)
-        logging.info("Veritabanı tabloları başarıyla kontrol edildi/oluşturuldu.")
+        logging.info(f"Veritabanı tabloları başarıyla kontrol edildi/oluşturuldu. Yol: {DB_FILE}")
     finally:
         conn.close()
 

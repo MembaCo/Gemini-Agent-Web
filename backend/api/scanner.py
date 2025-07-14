@@ -4,10 +4,11 @@
 import logging
 from urllib.parse import unquote
 from fastapi import APIRouter, HTTPException
-# DÜZELTME: İsim çakışmasını önlemek için 'core.scanner' modülü 'core_scanner' olarak import ediliyor.
 from core import scanner as core_scanner
 import database
-from tools import get_technical_indicators, _get_unified_symbol
+# DÜZELTME: LangChain aracını değil, doğrudan mantık fonksiyonunu import ediyoruz
+from tools.exchange import _get_technical_indicators_logic
+from tools.utils import _get_unified_symbol
 
 router = APIRouter(
     prefix="/scanner",
@@ -36,7 +37,6 @@ async def run_new_interactive_scan():
     """
     logging.info("API: Yeni interaktif tarama isteği alındı.")
     try:
-        # DÜZELTME: Çağrı, yeniden adlandırılan 'core_scanner' üzerinden yapılıyor.
         candidates = await core_scanner.get_interactive_scan_candidates()
         database.save_scanner_candidates(candidates)
         return candidates
@@ -53,7 +53,6 @@ async def run_proactive_scan():
     """
     logging.info("API: Proaktif tarama döngüsünü manuel tetikleme isteği alındı.")
     try:
-        # DÜZELTME: Çağrı, yeniden adlandırılan 'core_scanner' üzerinden yapılıyor.
         scan_result = await core_scanner.execute_single_scan_cycle()
         return scan_result
     except Exception as e:
@@ -78,7 +77,9 @@ async def refresh_single_candidate(symbol: str):
         
         timeframe = db_candidate.get('timeframe', '15m')
         
-        indicators_result = get_technical_indicators(f"{unified_symbol},{timeframe}")
+        # --- DÜZELTME: Fonksiyon çağrısı artık ayrı parametrelerle yapılıyor ---
+        # Bu, 'ValidationError: timeframe Field required' hatasını çözer.
+        indicators_result = _get_technical_indicators_logic(unified_symbol, timeframe)
 
         if indicators_result.get("status") != "success":
             raise HTTPException(status_code=400, detail=f"{unified_symbol} için göstergeler alınamadı: {indicators_result.get('message')}")

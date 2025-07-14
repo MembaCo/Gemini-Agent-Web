@@ -9,10 +9,7 @@ from ccxt.base.errors import BadSymbol
 from google.api_core.exceptions import ResourceExhausted
 
 from core import agent as core_agent, app_config
-# --- DÜZELTME BAŞLANGICI ---
-# _fetch_price_natively yerine get_price_with_cache import ediliyor.
-from tools import get_technical_indicators, _get_unified_symbol, get_price_with_cache
-# --- DÜZELTME SONU ---
+from tools.exchange import _get_technical_indicators_logic, get_price_with_cache, _get_unified_symbol
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
 
@@ -32,14 +29,16 @@ async def perform_new_analysis(request: NewAnalysisRequest):
         use_mta = app_config.settings.get('USE_MTA_ANALYSIS', True)
         trend_timeframe = app_config.settings.get('MTA_TREND_TIMEFRAME', '4h')
         
-        entry_indicators_result = await asyncio.to_thread(get_technical_indicators, f"{unified_symbol},{request.timeframe}")
+        # DÜZELTME: Parametreler artık ayrı ayrı gönderiliyor
+        entry_indicators_result = await asyncio.to_thread(_get_technical_indicators_logic, unified_symbol, request.timeframe)
         if entry_indicators_result.get("status") != "success":
             raise HTTPException(status_code=400, detail=f"Analiz yapılamadı: {entry_indicators_result.get('message')}")
             
         final_prompt = ""
-        # YENİ: Zaman dilimleri aynıysa MTA kullanma
+        # Zaman dilimleri aynıysa MTA kullanma
         if use_mta and request.timeframe != trend_timeframe:
-            trend_indicators_result = await asyncio.to_thread(get_technical_indicators, f"{unified_symbol},{trend_timeframe}")
+            # DÜZELTME: Parametreler artık ayrı ayrı gönderiliyor
+            trend_indicators_result = await asyncio.to_thread(_get_technical_indicators_logic, unified_symbol, trend_timeframe)
             if trend_indicators_result.get("status") != "success":
                 raise HTTPException(status_code=400, detail=f"Trend analizi ({trend_timeframe}) için veri alınamadı: {trend_indicators_result.get('message')}")
             final_prompt = core_agent.create_mta_analysis_prompt(unified_symbol, current_price, request.timeframe, entry_indicators_result["data"], trend_timeframe, trend_indicators_result["data"])

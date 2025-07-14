@@ -1,4 +1,4 @@
-import React, { createContext, useState, useCallback, useContext } from 'react';
+import React, { createContext, useState, useCallback, useContext, useEffect } from 'react';
 import { Power } from 'lucide-react';
 
 const AuthContext = createContext(null);
@@ -8,6 +8,8 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('authToken'));
     const [toast, setToast] = useState(null);
+    // YENİ: Ayarları global olarak tutmak için state eklendi.
+    const [settings, setSettings] = useState({});
 
     const API_URL = "/api";
 
@@ -18,6 +20,7 @@ export const AuthProvider = ({ children }) => {
     const logout = useCallback(() => {
         localStorage.removeItem('authToken');
         setIsAuthenticated(false);
+        setSettings({}); // Çıkış yapıldığında ayarları temizle
         showToast('Başarıyla çıkış yapıldı.', 'info');
     }, [showToast]);
 
@@ -66,13 +69,14 @@ export const AuthProvider = ({ children }) => {
         }
     };
     
-    // YENİ: Uygulama versiyonunu çeken fonksiyon
-    const fetchAppVersion = useCallback(() => apiFetch('/app-version'), [apiFetch]);
-    
-    const fetchData = useCallback(() => apiFetch('/dashboard/stats'), [apiFetch]);
-    const fetchPositions = useCallback(() => apiFetch('/positions/'), [apiFetch]);
+    // API Fonksiyonları
     const fetchSettings = useCallback(() => apiFetch('/settings/'), [apiFetch]);
     const saveSettings = useCallback((newSettings) => apiFetch('/settings/', { method: 'PUT', body: JSON.stringify(newSettings) }), [apiFetch]);
+    
+    // ... (diğer tüm API fetch fonksiyonları burada aynı kalır) ...
+    const fetchAppVersion = useCallback(() => apiFetch('/app-version'), [apiFetch]);
+    const fetchData = useCallback(() => apiFetch('/dashboard/stats'), [apiFetch]);
+    const fetchPositions = useCallback(() => apiFetch('/positions/'), [apiFetch]);
     const runAnalysis = useCallback((params) => apiFetch('/analysis/new', { method: 'POST', body: JSON.stringify(params) }), [apiFetch]);
     const openPosition = useCallback((params) => apiFetch('/positions/open', { method: 'POST', body: JSON.stringify(params) }), [apiFetch]);
     const closePosition = useCallback((symbol) => apiFetch(`/positions/${encodeURIComponent(symbol)}/close`, { method: 'POST' }), [apiFetch]);
@@ -93,10 +97,20 @@ export const AuthProvider = ({ children }) => {
     const fetchScannerCandidates = useCallback(() => apiFetch('/scanner/candidates'), [apiFetch]);
     const refreshScannerCandidate = useCallback((symbol) => apiFetch(`/scanner/candidates/${encodeURIComponent(symbol)}/refresh`, { method: 'POST' }), [apiFetch]);
 
+    // YENİ: Oturum açıldığında ayarları yükle
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetchSettings().then(setSettings).catch(err => showToast("Uygulama ayarları yüklenemedi: " + err.message, "error"));
+        }
+    }, [isAuthenticated, fetchSettings, showToast]);
+
     const value = {
         isAuthenticated, login, logout, toast, showToast, setToast,
-        fetchAppVersion, // YENİ
-        fetchData, fetchPositions, fetchSettings, saveSettings, runAnalysis, openPosition,
+        // YENİ: Ayarlar state'i ve güncelleyici fonksiyonu context'e ekleniyor.
+        settings, 
+        setSettings,
+        // API fonksiyonları
+        fetchAppVersion, fetchData, fetchPositions, fetchSettings, saveSettings, runAnalysis, openPosition,
         closePosition, refreshPnl, reanalyzePosition, fetchEvents,
         closeAllPositions, closeProfitablePositions, closeLosingPositions, reanalyzeAllPositions,
         runBacktest, fetchChartData, fetchPresets, savePreset, deletePreset,

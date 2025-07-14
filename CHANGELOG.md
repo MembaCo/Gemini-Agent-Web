@@ -3,6 +3,24 @@ Tüm önemli proje değişiklikleri bu dosyada belgelenmektedir.
 ...
 ---
 
+### [4.8.0] - 2025-07-15 - Mantıksal Tutarlılık ve Kalıcı Veri Düzeltmeleri
+Bu sürüm, botun temel mantığındaki en önemli çelişkilerden birini gidererek "aç-kapa" döngülerini engeller ve uygulamanın en kritik sorunlarından biri olan veri sıfırlanması problemini kalıcı olarak çözer.
+
+**🧠 Değiştirildi (Changed)**
+
+AI Analiz Mantığına "Hafıza" Eklendi: Bir pozisyon açıldıktan hemen sonra yapılan yeniden analizlerde, AI'ın "Risk Yöneticisi" rolüne bürünerek "Fırsat Avcısı" rolündeki kendi tavsiyesini geçersiz kılması sorunu giderildi. Artık yeniden analiz prompt'u (create_reanalysis_prompt), pozisyonun ilk açılış gerekçesini de içeriyor. Bu sayede AI, "Bu pozisyonu neden açmıştık? O gerekçe hala geçerli mi?" sorusunu sorarak çok daha tutarlı ve akıllıca kararlar veriyor.
+
+✅ **✅ Düzeltildi (Fixed)**
+
+KRİTİK: Veritabanı Sıfırlanma Hatası Giderildi: Uygulama (Docker konteyneri) her yeniden başlatıldığında veritabanının (trades.db) sıfırlanmasına neden olan kritik bir yol hatası düzeltildi. Veritabanı yolu artık her zaman kalıcı depolama alanını (/app/data) gösterecek şekilde sabitlendi, böylece tüm ayarlar, pozisyonlar ve işlem geçmişi kalıcı hale getirildi.
+
+Parametre Uyumsuzluk Hataları (ValidationError): Projenin farklı yerlerinde (api/analysis.py, api/scanner.py, api/positions.py), get_technical_indicators aracına tek bir birleşik string gönderilmesinden kaynaklanan tüm ValidationError ve AttributeError: 'str' object has no attribute 'parent_run_id' hataları giderildi. Tüm fonksiyon çağrıları, artık symbol ve timeframe parametrelerini ayrı ayrı gönderecek şekilde standartlaştırıldı.
+
+Telegram Bildirim Hatası (can't parse entities): Yapay zekanın ürettiği gerekçelerin özel karakterler (*, _ vb.) içermesi durumunda Telegram bildirimlerinin gönderilememesine neden olan hata, gönderilecek tüm metinlerin Telegram'a uygun şekilde temizlenmesiyle (escaping) çözüldü.
+
+Proaktif Tarayıcı Teşhis Mekanizması: Proaktif tarayıcının neden aday bulamadığını anlamak için core/scanner.py dosyasına detaylı teşhis loglaması eklendi. Artık bir adayın hangi filtreye (RSI, ADX, Volatilite vb.) takıldığı loglarda açıkça belirtiliyor, bu da gelecekteki kalibrasyonları kolaylaştırıyor.
+
+---
 ### [4.6.0] - 2025-07-08 - Telegram Bot Devrimi ve Kararlılık Düzeltmeleri
 Bu sürüm, Telegram botunu basit bir bildirim aracından, projenin tam teşekküllü bir uzaktan kumandasına dönüştürürken, uygulamanın kendi kendine kapanmasına neden olan kritik bir arka plan hatasını gidererek tam kararlılık sağlar.
 
@@ -185,11 +203,9 @@ Tüm bot yapılandırması (LEVERAGE, RISK_PER_TRADE_PERCENT, BLACKLIST vb.) art
 
 Ayarlar, web arayüzündeki "Uygulama Ayarları" modalı üzerinden, sunucuyu yeniden başlatmaya gerek kalmadan anlık olarak değiştirilebilir.
 
-Kolay Kurulum (Self-Hosted & Umbrel):
+Kolay Kurulum (Self-Hosted):
 
 Dockerfile ve docker-compose.yml dosyaları ile proje tamamen konteynerize edildi.
-
-umbrel-app.yml manifestosu ile Umbrel App Store'a özel uygulama olarak tek tıkla kurulabilir hale getirildi.
 
 Modern API Altyapısı (FastAPI):
 

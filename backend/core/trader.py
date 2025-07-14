@@ -25,7 +25,7 @@ def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_pri
         raise TradeException("Maksimum eşzamanlı pozisyon limitine ulaşıldı.")
 
     trade_side = "buy" if "AL" in recommendation else "sell"
-    atr_result = get_atr_value(f"{symbol},{timeframe}")
+    atr_result = get_atr_value(symbol, timeframe)
     if atr_result.get("status") != "success":
         raise TradeException(f"ATR değeri alınamadı: {atr_result.get('message')}")
 
