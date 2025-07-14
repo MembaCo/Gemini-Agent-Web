@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ScanSearch, PlayCircle, Loader2, Bot, RefreshCw, SlidersHorizontal, X, Info, Save } from 'lucide-react';
+import { ScanSearch, PlayCircle, Loader2, Bot, RefreshCw, SlidersHorizontal, X, Info, Save, Layers } from 'lucide-react';
 import { Modal, Switch, TooltipWrapper, AnalysisResultModal } from './SharedComponents';
 
-// YENİ: Tarayıcıya özel ayar tanımlamaları
+// Tarayıcıya özel ayar tanımlamaları
 const scannerSettingDefinitions = {
     'PROACTIVE_SCAN_USE_GAINERS_LOSERS': {
         label: "En Çok Yükselen/Düşenleri Kullan",
@@ -72,7 +72,9 @@ const ScannerSettingsModal = ({ settings, isVisible, onClose, onSave, onSettings
                 <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700"><X size={24} /></button>
             </div>
             <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-4 -mr-4">
-                {Object.keys(scannerSettingDefinitions).map(key => (
+                {Object.keys(scannerSettingDefinitions)
+                    .filter(key => key in settings) // Sadece mevcut ayarlarda olanları göster
+                    .map(key => (
                     <div key={key} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center border-b border-gray-700/50 pb-4">
                         <div>
                             <label className="text-gray-200 font-medium">{scannerSettingDefinitions[key].label}</label>
@@ -105,11 +107,11 @@ export const ScannerPage = () => {
     const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
     const [scannerSettings, setScannerSettings] = useState({});
     const [isOpeningTrade, setIsOpeningTrade] = useState(false);
+    const [isBulkRefreshing, setIsBulkRefreshing] = useState(false);
 
     const loadScannerSettings = useCallback(async () => {
         try {
             const allSettings = await fetchSettings();
-            // Yalnızca tarayıcı ile ilgili ayarları filtrele
             const filteredSettings = Object.keys(allSettings)
                 .filter(key => key.startsWith('PROACTIVE_SCAN_'))
                 .reduce((obj, key) => {
@@ -125,11 +127,9 @@ export const ScannerPage = () => {
     const handleSaveSettings = useCallback(async (newSettings) => {
         showToast('Tarayıcı ayarları kaydediliyor...', 'info');
         try {
-            // Sadece bu modalda değiştirilen ayarları kaydet
             await saveSettings(newSettings);
             showToast('Tarayıcı ayarları başarıyla kaydedildi.', 'success');
             setIsSettingsModalVisible(false);
-            // Ayarları yeniden yükle
             loadScannerSettings();
         } catch (err) {
             showToast(err.message, 'error');
@@ -144,7 +144,7 @@ export const ScannerPage = () => {
         setIsFetchingInitial(true);
         try {
             await Promise.all([
-                (async () => { const initialCandidates = await fetchScannerCandidates(); setCandidates(initialCandidates); })(),
+                fetchScannerCandidates().then(setCandidates),
                 loadScannerSettings()
             ]);
         } catch (error) {
@@ -162,14 +162,14 @@ export const ScannerPage = () => {
         setIsScanning(true);
         setCandidates([]);
         showToast('Yeni interaktif tarama başlatıldı...', 'info');
-        setLoadingStage('Piyasa verileri ve temel göstergeler çekiliyor...');
+        setLoadingStage('Piyasa verileri çekiliyor...');
         try {
             const newCandidates = await runInteractiveScan();
             setCandidates(newCandidates);
             if (newCandidates.length > 0) {
-                showToast(`${newCandidates.length} potansiyel aday bulundu ve listelendi.`, 'success');
+                showToast(`${newCandidates.length} potansiyel aday bulundu.`, 'success');
             } else {
-                showToast(`Tarama tamamlandı ancak filtrelere uyan aday bulunamadı.`, 'info');
+                showToast('Tarama tamamlandı ancak filtrelere uyan aday bulunamadı.', 'info');
             }
         } catch (error) {
             showToast(`Tarama sırasında bir hata oluştu: ${error.message}`, 'error');
@@ -179,9 +179,88 @@ export const ScannerPage = () => {
         }
     };
 
-    const handleRefresh = async (symbol) => { setRefreshingSymbol(symbol); try { const refreshedData = await refreshScannerCandidate(symbol); setCandidates(currentCandidates => currentCandidates.map(c => (c.symbol === symbol ? refreshedData : c)) ); showToast(`${symbol} verileri yenilendi.`, 'success'); } catch (error) { showToast(`Yenileme hatası: ${error.message}`, 'error'); } finally { setRefreshingSymbol(null); } };
-    const handleAnalyze = useCallback(async (candidate) => { setAnalyzingSymbol(candidate.symbol); try { const result = await runAnalysis({ symbol: candidate.symbol, timeframe: candidate.timeframe }); setAnalysisResult(result); } catch (err) { showToast(err.message, 'error'); } finally { setAnalyzingSymbol(null); } }, [runAnalysis, showToast]);
-    const handleConfirmTrade = useCallback(async (tradeData) => { setIsOpeningTrade(true); showToast(`${tradeData.symbol} için pozisyon açılıyor...`, 'info'); try { const result = await openPosition({ symbol: tradeData.symbol, recommendation: tradeData.recommendation, timeframe: tradeData.timeframe, price: tradeData.data.price, }); showToast(result.message || 'Pozisyon başarıyla açıldı!', 'success'); setAnalysisResult(null); } catch (err) { showToast(err.message, 'error'); } finally { setIsOpeningTrade(false); } }, [openPosition, showToast]);
+    const handleBulkRefresh = useCallback(async () => {
+        if (candidates.length === 0) {
+            showToast("Yenilenecek aday bulunmuyor.", "warning");
+            return;
+        }
+        setIsBulkRefreshing(true);
+        showToast(`${candidates.length} adayın tümü yenileniyor...`, "info");
+
+        const refreshPromises = candidates.map(candidate => refreshScannerCandidate(candidate.symbol));
+        const results = await Promise.allSettled(refreshPromises);
+        
+        let successCount = 0;
+        let errorCount = 0;
+        const updatedCandidates = [...candidates];
+
+        results.forEach((result, index) => {
+            if (result.status === 'fulfilled') {
+                const refreshedData = result.value;
+                const originalIndex = updatedCandidates.findIndex(c => c.symbol === refreshedData.symbol);
+                if (originalIndex !== -1) {
+                    updatedCandidates[originalIndex] = refreshedData;
+                }
+                successCount++;
+            } else {
+                console.error(`Toplu yenileme sırasında hata (${candidates[index].symbol}):`, result.reason);
+                errorCount++;
+            }
+        });
+
+        setCandidates(updatedCandidates);
+
+        if (errorCount > 0) {
+            showToast(`${successCount} aday yenilendi, ${errorCount} adayda hata oluştu.`, "warning");
+        } else {
+            showToast('Tüm adaylar başarıyla yenilendi.', "success");
+        }
+        setIsBulkRefreshing(false);
+    }, [candidates, refreshScannerCandidate, showToast]);
+
+    const handleRefresh = async (symbol) => { 
+        setRefreshingSymbol(symbol); 
+        try { 
+            const refreshedData = await refreshScannerCandidate(symbol); 
+            setCandidates(currentCandidates => currentCandidates.map(c => (c.symbol === symbol ? refreshedData : c))); 
+            showToast(`${symbol} verileri yenilendi.`, 'success'); 
+        } catch (error) { 
+            showToast(`Yenileme hatası: ${error.message}`, 'error'); 
+        } finally { 
+            setRefreshingSymbol(null); 
+        } 
+    };
+    
+    const handleAnalyze = useCallback(async (candidate) => { 
+        setAnalyzingSymbol(candidate.symbol); 
+        try { 
+            const result = await runAnalysis({ symbol: candidate.symbol, timeframe: candidate.timeframe }); 
+            setAnalysisResult(result); 
+        } catch (err) { 
+            showToast(err.message, 'error'); 
+        } finally { 
+            setAnalyzingSymbol(null); 
+        } 
+    }, [runAnalysis, showToast]);
+
+    const handleConfirmTrade = useCallback(async (tradeData) => { 
+        setIsOpeningTrade(true); 
+        showToast(`${tradeData.symbol} için pozisyon açılıyor...`, 'info'); 
+        try { 
+            const result = await openPosition({ 
+                symbol: tradeData.symbol, 
+                recommendation: tradeData.recommendation, 
+                timeframe: tradeData.timeframe, 
+                price: tradeData.data.price, 
+            }); 
+            showToast(result.message || 'Pozisyon başarıyla açıldı!', 'success'); 
+            setAnalysisResult(null); 
+        } catch (err) { 
+            showToast(err.message, 'error'); 
+        } finally { 
+            setIsOpeningTrade(false); 
+        } 
+    }, [openPosition, showToast]);
 
     return (
         <div className="space-y-8">
@@ -192,8 +271,20 @@ export const ScannerPage = () => {
                         <p className="text-sm text-gray-400 mt-1">Piyasayı potansiyel fırsatlar için tarayın ve seçtiğiniz adayları AI ile analiz edin.</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                        <button onClick={() => setIsSettingsModalVisible(true)} className="bg-gray-700 hover:bg-gray-600 text-white font-semibold p-2.5 rounded-md"><SlidersHorizontal size={20}/></button>
-                        <button onClick={handleScan} disabled={isScanning} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-md flex justify-center items-center gap-2 disabled:bg-gray-600 disabled:cursor-not-allowed min-w-[200px]">{isScanning ? <Loader2 className="animate-spin" size={20} /> : <PlayCircle size={20} />}{isScanning ? loadingStage : 'Yeni Tarama Başlat'}</button>
+                        <TooltipWrapper content="Tarayıcı Aday Kaynakları Ayarları">
+                            <button onClick={() => setIsSettingsModalVisible(true)} className="bg-gray-700 hover:bg-gray-600 text-white font-semibold p-2.5 rounded-md disabled:bg-gray-600/50 disabled:cursor-not-allowed" disabled={isScanning || isBulkRefreshing}>
+                                <SlidersHorizontal size={20}/>
+                            </button>
+                        </TooltipWrapper>
+                        <TooltipWrapper content="Listedeki Tüm Adayları Yenile">
+                            <button onClick={handleBulkRefresh} disabled={isScanning || isBulkRefreshing || candidates.length === 0} className="bg-purple-600 hover:bg-purple-700 text-white font-semibold p-2.5 rounded-md disabled:bg-gray-600/50 disabled:cursor-not-allowed">
+                                {isBulkRefreshing ? <Loader2 className="animate-spin" size={20}/> : <Layers size={20}/>}
+                            </button>
+                        </TooltipWrapper>
+                        <button onClick={handleScan} disabled={isScanning || isBulkRefreshing} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-md flex justify-center items-center gap-2 disabled:bg-gray-600/50 disabled:cursor-not-allowed min-w-[200px]">
+                            {isScanning ? <Loader2 className="animate-spin" size={20} /> : <PlayCircle size={20} />}
+                            {isScanning ? loadingStage : 'Yeni Tarama Başlat'}
+                        </button>
                     </div>
                 </div>
             </div>

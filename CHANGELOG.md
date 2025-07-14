@@ -3,6 +3,12 @@ Tüm önemli proje değişiklikleri bu dosyada belgelenmektedir.
 ...
 ---
 
+### [4.8.1] - 2025-07-15 - Mantıksal Tutarlılık ve Kalıcı Veri Düzeltmeleri
+🚀 **Eklendi (Added)**
+
+Toplu Aday Yenileme: İnteraktif Fırsat Tarayıcı ekranına, listedeki tüm adayların verilerini tek bir tıkla güncelleyen bir "Toplu Yenile" butonu eklendi.
+---
+
 ### [4.8.0] - 2025-07-15 - Mantıksal Tutarlılık ve Kalıcı Veri Düzeltmeleri
 Bu sürüm, botun temel mantığındaki en önemli çelişkilerden birini gidererek "aç-kapa" döngülerini engeller ve uygulamanın en kritik sorunlarından biri olan veri sıfırlanması problemini kalıcı olarak çözer.
 
