@@ -1,11 +1,15 @@
 import React from 'react';
 import { Loader2, X, Brain, ShieldX } from 'lucide-react';
 
+// Ana Modal bileşeni, maksimum yükseklik sınırı ile güncellendi.
 export const Modal = ({ children, isVisible, onClose, maxWidth = 'max-w-md' }) => {
     if (!isVisible) return null;
     return (
       <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4" onClick={onClose}>
-        <div className={`bg-gray-800 border border-gray-700 rounded-xl p-6 sm:p-8 w-full ${maxWidth} flex flex-col`} onClick={e => e.stopPropagation()}>{children}</div>
+        {/* max-h-[85vh] sınıfı, modalın ekran yüksekliğinin %85'inden fazla büyümesini engeller ve dikey taşmayı önler. */}
+        <div className={`bg-gray-800 border border-gray-700 rounded-xl p-6 sm:p-8 w-full ${maxWidth} flex flex-col max-h-[85vh]`} onClick={e => e.stopPropagation()}>
+            {children}
+        </div>
       </div>
     );
   };
@@ -25,17 +29,25 @@ export const TooltipWrapper = ({ content, children }) => (
     </div>
 );
 
+// Analiz Sonucu Modalı, kaydırılabilir içerik alanı ile güncellendi.
 export const AnalysisResultModal = ({ result, isVisible, onClose, onConfirmTrade, isOpeningTrade }) => {
     const isTradeable = result?.recommendation === 'AL' || result?.recommendation === 'SAT';
     return (
         <Modal isVisible={isVisible} onClose={onClose}>
-            <h2 className="text-2xl font-bold text-white mb-4">Analiz Sonucu</h2>
-            <div className="space-y-3 text-gray-300">
+            {/* Başlık (sabit) */}
+            <div className="flex-shrink-0">
+                <h2 className="text-2xl font-bold text-white mb-4">Analiz Sonucu</h2>
+            </div>
+
+            {/* İçerik (kaydırılabilir) */}
+            <div className="flex-grow overflow-y-auto pr-4 -mr-4 space-y-3 text-gray-300 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
                 <p><span className="font-semibold text-gray-400">Sembol:</span> {result?.symbol}</p>
                 <p><span className="font-semibold text-gray-400">Tavsiye:</span> <span className={`font-bold ${isTradeable ? (result?.recommendation === 'AL' ? 'text-green-400' : 'text-red-400') : 'text-yellow-400'}`}>{result?.recommendation}</span></p>
                 <p><span className="font-semibold text-gray-400">Gerekçe:</span> {result?.reason}</p>
             </div>
-            <div className="mt-6 flex gap-4">
+
+            {/* Butonlar (sabit) */}
+            <div className="flex-shrink-0 mt-6 flex gap-4">
                 <button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">Kapat</button>
                 {isTradeable && (
                     <button onClick={() => onConfirmTrade(result)} disabled={isOpeningTrade} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md flex justify-center items-center gap-2 disabled:bg-gray-500 disabled:cursor-wait">
@@ -48,15 +60,18 @@ export const AnalysisResultModal = ({ result, isVisible, onClose, onConfirmTrade
     );
 };
 
+// Yeniden Analiz Modalı da kaydırılabilir yapıya kavuşturuldu.
 export const ReanalysisResultModal = ({ result, isVisible, onClose, onConfirmClose }) => (
     <Modal isVisible={isVisible} onClose={onClose}>
-        <h2 className="text-2xl font-bold text-white mb-4">Pozisyon Yeniden Analiz Sonucu</h2>
-        <div className="space-y-3 text-gray-300">
+        <div className="flex-shrink-0">
+            <h2 className="text-2xl font-bold text-white mb-4">Pozisyon Yeniden Analiz Sonucu</h2>
+        </div>
+        <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-3 text-gray-300 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
             <p><span className="font-semibold text-gray-400">Sembol:</span> {result?.symbol}</p>
             <p><span className="font-semibold text-gray-400">AI Tavsiyesi:</span> <span className={`font-bold ${result?.recommendation === 'KAPAT' ? 'text-red-400' : 'text-green-400'}`}>{result?.recommendation}</span></p>
             <p><span className="font-semibold text-gray-400">Gerekçe:</span> {result?.reason}</p>
         </div>
-        <div className="mt-6 flex gap-4">
+        <div className="flex-shrink-0 mt-6 flex gap-4">
             <button onClick={onClose} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-md">Pozisyonu Tut</button>
             {result?.recommendation === 'KAPAT' && <button onClick={() => onConfirmClose(result.symbol)} className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-md">Kapatmayı Onayla</button>}
         </div>
@@ -95,8 +110,6 @@ export const ProactiveScanResultsModal = ({ opportunities, isVisible, onClose, o
         </Modal>
     );
 };
-
-
 
 export const BulkReanalysisResultModal = ({ results, isVisible, onClose, onConfirmClose }) => {
     if (!isVisible || !results) return null;
