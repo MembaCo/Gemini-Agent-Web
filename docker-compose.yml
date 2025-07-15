@@ -14,7 +14,6 @@ services:
     restart: unless-stopped
     
     # DÜZELTME: 'env_file' direktifi tamamen kaldırıldı.
-    # Umbrel, umbrel-app.yml dosyasındaki 'env' listesine göre
     # gerekli ortam değişkenlerini kurulum sırasında kullanıcıya sorarak
     # konteynere kendisi enjekte edecektir. Bu, daha güvenli ve uyumlu bir yöntemdir.
 
