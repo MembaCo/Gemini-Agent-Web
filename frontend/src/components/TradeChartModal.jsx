@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { X, Loader2 } from 'lucide-react';
 import { Modal } from './SharedComponents'; 
 
-
 export const TradeChartModal = ({ isVisible, onClose, trade }) => {
     const chartContainerRef = useRef(null);
     const chartRef = useRef(null);
@@ -22,16 +21,16 @@ export const TradeChartModal = ({ isVisible, onClose, trade }) => {
             setChartData([]); // Her yeni açılışta veriyi temizle
             setDisplayTimeframe(null);
 
-            const tradeEntryTimestamp = Math.floor(new Date(trade.opened_at || trade.created_at).getTime() / 1000);
-
-            // Aranacak zaman aralıkları (en olasıdan başlayarak)
+            // Eğer işlem kendi zaman aralığına sahipse, önce onu deneyelim.
             const timeframesToTry = trade.timeframe 
-                ? [trade.timeframe] 
-                : ['15m', '5m', '30m', '1h', '4h'];
-
+                ? [trade.timeframe, '15m', '30m', '1h', '4h', '1d']
+                : ['15m', '30m', '1h', '4h', '1d'];
+            
+            // Tekrarlanan zaman aralıklarını temizle
+            const uniqueTimeframes = [...new Set(timeframesToTry)]; 
             let foundData = null;
 
-            for (const tf of timeframesToTry) {
+            for (const tf of uniqueTimeframes) {
                 try {
                     console.log(`Grafik verisi deneniyor: ${trade.symbol} - ${tf}`);
                     const data = await fetchChartData({ 
@@ -40,8 +39,8 @@ export const TradeChartModal = ({ isVisible, onClose, trade }) => {
                         limit: 500 
                     });
 
-                    // Veri içinde işlemin başlangıç zamanını arıyoruz
-                    if (data && data.some(bar => bar.time === tradeEntryTimestamp)) {
+                    // API'den boş bir liste gelip gelmediğini kontrol et
+                    if (data && Array.isArray(data) && data.length > 0) {
                         foundData = data;
                         setDisplayTimeframe(tf);
                         showToast(`${trade.symbol} için ${tf} grafiği bulundu.`, 'info');
@@ -56,7 +55,11 @@ export const TradeChartModal = ({ isVisible, onClose, trade }) => {
             if (foundData) {
                 setChartData(foundData);
             } else {
-                showToast(`${trade.symbol} için uygun grafik verisi bulunamadı. Bu çok eski bir kayıt olabilir.`, 'warning');
+                // Kullanıcıya daha açıklayıcı bir mesaj göster
+                showToast(
+                    `${trade.symbol} için borsada geçmiş mum verisi bulunamadı. Bu genellikle çok yeni veya düşük hacimli coinlerde görülür.`, 
+                    'warning'
+                );
             }
 
             setIsLoading(false);
@@ -78,20 +81,10 @@ export const TradeChartModal = ({ isVisible, onClose, trade }) => {
         };
 
         const chart = createChart(chartContainerRef.current, {
-            layout: {
-                background: { color: '#1f2937' },
-                textColor: '#d1d5db',
-            },
-            grid: {
-                vertLines: { color: 'rgba(255, 255, 255, 0.1)' },
-                horzLines: { color: 'rgba(255, 255, 255, 0.1)' },
-            },
-            timeScale: {
-                timeVisible: true,
-                secondsVisible: false,
-            }
+            layout: { background: { color: '#1f2937' }, textColor: '#d1d5db' },
+            grid: { vertLines: { color: 'rgba(255, 255, 255, 0.1)' }, horzLines: { color: 'rgba(255, 255, 255, 0.1)' } },
+            timeScale: { timeVisible: true, secondsVisible: false }
         });
-
         chartRef.current = chart;
 
         const candlestickSeries = chart.addCandlestickSeries({
@@ -150,24 +143,27 @@ export const TradeChartModal = ({ isVisible, onClose, trade }) => {
         chart.timeScale().fitContent();
 
         const resizeObserver = new ResizeObserver(entries => {
+            if (!entries || entries.length === 0 || !chartRef.current) return;
             const { width, height } = entries[0].contentRect;
             chart.applyOptions({ width, height });
         });
-        resizeObserver.observe(chartContainerRef.current);
-
+        if (chartContainerRef.current) {
+            resizeObserver.observe(chartContainerRef.current);
+        }
 
         return () => {
             resizeObserver.disconnect();
-            chart.remove();
-            chartRef.current = null;
+            if (chartRef.current) {
+                chartRef.current.remove();
+                chartRef.current = null;
+            }
         };
     }, [isLoading, chartData, trade]);
 
     return (
         <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-4xl">
-            <div className="flex flex-col h-full">
-                <div className="flex justify-between items-center p-4 border-b border-gray-700">
-                     {/* YENİ: Başlığı dinamik hale getiriyoruz */}
+            <div className="flex flex-col h-[70vh]">
+                <div className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
                     <h2 className="text-xl font-bold text-white">İşlem Detayı: {trade?.symbol} ({displayTimeframe || '...'})</h2>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white">
                         <X size={24} />
@@ -182,7 +178,7 @@ export const TradeChartModal = ({ isVisible, onClose, trade }) => {
                         <div ref={chartContainerRef} className="w-full h-full" />
                     ) : (
                         <div className="absolute inset-0 flex justify-center items-center z-10">
-                            <p className="text-gray-400 p-4 text-center">Bu işlem için grafik verisi bulunamadı.</p>
+                            <p className="text-gray-400 p-4 text-center">Bu işlem için borsada grafik verisi bulunamadı.</p>
                         </div>
                     )}
                 </div>

@@ -3,6 +3,21 @@ Tüm önemli proje değişiklikleri bu dosyada belgelenmektedir.
 ...
 ---
 
+### [4.8.2] - 2025-07-15 - Kullanıcı Deneyimi ve Arayüz İyileştirmeleri
+Bu sürüm, kullanıcıların sık karşılaştığı küçük sorunları gidererek ve yeni kolaylıklar ekleyerek arayüzün daha akıcı ve sezgisel çalışmasını sağlamaya odaklanmıştır.
+
+**🧠 Değiştirildi (Changed)**
+
+Akıllı Grafik Veri Yönetimi: "İşlem Detayı" grafiği, borsada geçmiş mum verisi bulunamayan (genellikle yeni veya düşük hacimli) coinler için artık boş bir hata göstermek yerine, durumu kullanıcıya "Geçmiş mum verisi bulunamadı" şeklinde bir Toast bildirimi ile açıklıyor. Bu, özellikle 1000000MOG/USDT gibi varlıklarda yaşanan kafa karışıklığını giderir.
+
+🚀 **Eklendi (Added)**
+
+Toplu Aday Yenileme: İnteraktif Fırsat Tarayıcı ekranına, listedeki tüm adayların verilerini tek bir tıkla eş zamanlı olarak güncelleyen bir "Toplu Yenile" butonu eklendi. Bu, özellikle uzun aday listelerinde kullanıcıya büyük bir zaman ve kolaylık kazandırır.
+
+Detaylı Tarayıcı Ayarları Modalı: Fırsat Tarayıcı için, her bir ayarın ne işe yaradığını detaylıca açıklayan, kullanıcı dostu ve ayrıştırılmış yeni bir ayarlar penceresi oluşturuldu. Bu, kullanıcıların filtreleri daha bilinçli bir şekilde kalibre etmesini sağlar.
+
+---
+
 ### [4.8.1] - 2025-07-15 - Mantıksal Tutarlılık ve Kalıcı Veri Düzeltmeleri
 🚀 **Eklendi (Added)**
 
