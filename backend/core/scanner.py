@@ -1,5 +1,5 @@
 # backend/core/scanner.py
-# @author: Memba Co.
+# @author: MembaCo.
 
 import pandas as pd
 import logging
@@ -7,15 +7,17 @@ import asyncio
 from datetime import datetime
 from google.api_core.exceptions import ResourceExhausted
 
-import database 
+import database
 from core import app_config, agent
 from core.trader import open_new_trade, TradeException
-# Hatalı çağrıyı önlemek için mantık fonksiyonunu doğrudan import ediyoruz
-from tools.exchange import (
-    get_top_gainers_losers, 
-    get_volume_spikes, 
-    _get_technical_indicators_logic, 
-    get_price_with_cache
+# YENİ: Yeni market sentiment fonksiyonları import ediliyor
+from tools import (
+    get_top_gainers_losers,
+    get_volume_spikes,
+    _get_technical_indicators_logic,
+    get_price_with_cache,
+    get_latest_crypto_news, # YENİ
+    get_twitter_sentiment  # YENİ
 )
 from tools.utils import _get_unified_symbol
 from tools import exchange as exchange_tools
@@ -201,29 +203,36 @@ async def execute_single_scan_cycle():
     data_errors = 0
     
     entry_timeframe = config.get('PROACTIVE_SCAN_ENTRY_TIMEFRAME', '15m')
-    trend_timeframe = config.get('MTA_TREND_TIMEFRAME', '4h')
-    use_mta = config.get('USE_MTA_ANALYSIS', True)
 
     async def analyze_symbol(candidate):
         symbol = candidate['symbol']
         async with semaphore:
             try:
-                current_price_val = await asyncio.to_thread(get_price_with_cache, symbol)
+                # --- TÜM VERİLERİ ASENKRON OLARAK ÇEK ---
+                price_task = asyncio.to_thread(get_price_with_cache, symbol)
+                indicators_task = asyncio.to_thread(_get_technical_indicators_logic, symbol, entry_timeframe)
+                news_task = asyncio.to_thread(get_latest_crypto_news, symbol)
+                sentiment_task = asyncio.to_thread(get_twitter_sentiment, symbol)
+
+                current_price_val, indicators_result, news_headlines, sentiment_data = await asyncio.gather(
+                    price_task, indicators_task, news_task, sentiment_task
+                )
+                # --- VERİ ÇEKME SONU ---
+
                 if not current_price_val:
                     return {"type": "error", "symbol": symbol, "message": "Fiyat bilgisi alınamadı."}
+                if indicators_result.get("status") != "success":
+                    return {"type": "error", "symbol": symbol, "message": f"Teknik veri hatası: {indicators_result.get('message')}"}
 
-                entry_indicators_result = await asyncio.to_thread(_get_technical_indicators_logic, symbol, entry_timeframe)
-                if entry_indicators_result.get("status") != "success":
-                    return {"type": "error", "symbol": symbol, "message": f"Teknik veri hatası: {entry_indicators_result.get('message')}"}
-
-                final_prompt = ""
-                if use_mta and entry_timeframe != trend_timeframe:
-                    trend_indicators_result = await asyncio.to_thread(_get_technical_indicators_logic, symbol, trend_timeframe)
-                    if trend_indicators_result.get("status") != "success":
-                        return {"type": "error", "symbol": symbol, "message": f"Trend verisi hatası: {trend_indicators_result.get('message')}"}
-                    final_prompt = agent.create_mta_analysis_prompt(symbol, current_price_val, entry_timeframe, entry_indicators_result["data"], trend_timeframe, trend_indicators_result["data"])
-                else:
-                    final_prompt = agent.create_final_analysis_prompt(symbol, entry_timeframe, current_price_val, entry_indicators_result["data"])
+                # --- YENİ BÜTÜNCÜL PROMPT'U KULLAN ---
+                final_prompt = agent.create_holistic_analysis_prompt(
+                    symbol=symbol,
+                    price=current_price_val,
+                    timeframe=entry_timeframe,
+                    indicators=indicators_result["data"],
+                    news_headlines=news_headlines,
+                    sentiment_score=sentiment_data.get("score", 0.0)
+                )
                 
                 llm_result = await asyncio.to_thread(agent.llm_invoke_with_fallback, final_prompt)
                 parsed_data = agent.parse_agent_response(llm_result.content)
@@ -234,7 +243,6 @@ async def execute_single_scan_cycle():
                 if parsed_data.get('recommendation') in ['AL', 'SAT']:
                     if config.get('PROACTIVE_SCAN_AUTO_CONFIRM'):
                         try:
-                            # NOT: open_new_trade senkron bir fonksiyon olduğu için doğrudan çağrılabilir
                             open_new_trade(
                                 symbol=symbol, 
                                 recommendation=parsed_data['recommendation'], 

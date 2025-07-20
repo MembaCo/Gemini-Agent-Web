@@ -1,5 +1,5 @@
 # backend/core/agent.py
-# @author: Memba Co.
+# @author: MembaCo.
 
 import os
 import json
@@ -106,6 +106,71 @@ def llm_invoke_with_fallback(prompt: str):
             raise e
     
     raise Exception("Tüm modeller denendi ancak LLM çağrısı başarılı olamadı.")
+
+# --- YENİ BÜTÜNCÜL ANALİZ PROMPT'U ---
+def create_holistic_analysis_prompt(
+    symbol: str, 
+    price: float, 
+    timeframe: str, 
+    indicators: dict, 
+    news_headlines: list[str], 
+    sentiment_score: float
+) -> str:
+    """
+    Teknik, temel (haber) ve duyarlılık verilerini birleştirerek
+    bütüncül bir analiz için prompt oluşturur.
+    """
+    indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in indicators.items()])
+    news_text = "\n".join([f"- {title}" for title in news_headlines]) if news_headlines else "İlgili haber bulunamadı."
+    
+    sentiment_emoji = "😊" if sentiment_score > 0.2 else "😒" if sentiment_score < -0.2 else "😐"
+    sentiment_text = f"{sentiment_score:.2f} {sentiment_emoji}"
+
+    return f"""
+    Sen, hem teknik hem de temel analizi birleştirebilen, piyasa duyarlılığını anlayan
+    üst düzey bir finansal analistsin. Görevin, sana sunulan tüm verileri sentezleyerek
+    net ve gerekçeli bir ticaret kararı ('AL', 'SAT' veya 'BEKLE') vermektir.
+
+    ## ANALİZ ÇERÇEVESİ:
+    1.  **Teknik Analiz:** RSI ve ADX gibi göstergeler piyasanın mevcut momentumunu ve trend gücünü gösterir.
+    2.  **Temel Analiz (Haberler):** Son haber başlıkları, fiyatta ani hareketlere neden olabilecek veya mevcut trendi destekleyebilecek önemli gelişmeleri yansıtır.
+    3.  **Duyarlılık Analizi:** Sosyal medya duyarlılığı, piyasanın genel 'hissiyatını' ve yatırımcı beklentilerini gösterir. Pozitif skorlar iyimserliği, negatif skorlar kötümserliği belirtir.
+
+    ## SAĞLANAN VERİLER:
+    - **Sembol:** {symbol}
+    - **Anlık Fiyat:** {price}
+    - **Zaman Aralığı:** {timeframe}
+
+    ### 1. Teknik Göstergeler:
+    {indicator_text}
+
+    ### 2. Son Haber Başlıkları:
+    {news_text}
+
+    ### 3. Sosyal Medya Duyarlılık Skoru (-1.0 ile +1.0 arası):
+    {sentiment_text}
+
+    ## GÖREVİN:
+    Bu üç veri setini birleştirerek bir sonuca var. 
+    - Teknik sinyaller haberlerle destekleniyor mu?
+    - Sosyal medya duyarlılığı mevcut trendle uyumlu mu, yoksa bir ayrışma mı var?
+    - Sadece tek bir veriye değil, tüm resme bakarak karar ver.
+
+    ## İSTENEN JSON ÇIKTI FORMATI:
+    ```json
+    {{
+      "symbol": "{symbol}",
+      "timeframe": "{timeframe}",
+      "recommendation": "KARARIN (AL, SAT, veya BEKLE)",
+      "reason": "Kararını, teknik, temel ve duyarlılık verilerini nasıl birleştirdiğini açıklayan kısa ve net gerekçen.",
+      "analysis_type": "Holistic",
+      "data": {{
+        "price": {price},
+        "sentiment_score": {sentiment_score}
+      }}
+    }}
+    ```
+    """
 
 def create_bailout_reanalysis_prompt(position: dict, current_price: float, pnl_percentage: float, indicators: dict) -> str:
     """Zarardaki bir pozisyonun toparlanma anında kapatılıp kapatılmamasını sorgulamak için prompt oluşturur."""

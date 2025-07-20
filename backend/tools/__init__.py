@@ -1,5 +1,5 @@
-# tools/__init__.py
-# @author: Memba Co.
+# backend/tools/__init__.py
+# @author: MembaCo.
 
 # Bu dosya, 'tools' klasörünün bir Python paketi olarak tanınmasını sağlar.
 # Ayrıca, alt modüllerdeki fonksiyonları doğrudan paket seviyesinden
@@ -11,6 +11,7 @@ from .exchange import (
     get_wallet_balance,
     get_market_price,
     get_technical_indicators,
+    _get_technical_indicators_logic, # HATA GİDERİLDİ: Bu satır eklendi
     get_atr_value,
     get_top_gainers_losers,
     get_volume_spikes,
@@ -25,4 +26,10 @@ from .utils import (
     str_to_bool,
     _get_unified_symbol,
     _parse_symbol_timeframe_input,
+)
+
+# Yeni eklenen duyarlılık ve haber modülünü de dahil ediyoruz
+from .market_sentiment import (
+    get_latest_crypto_news,
+    get_twitter_sentiment,
 )

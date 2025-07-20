@@ -25,3 +25,7 @@ pydantic
 
 matplotlib
 mplfinance
+
+cryptocompare
+textblob
+tweepy

@@ -14,7 +14,7 @@ default_settings = {
     ],
 
 # === CANLI İŞLEM AYARI ===
-    "LIVE_TRADING": True,
+    "LIVE_TRADING": False,
     # YENİ: Simülasyon modu için sanal bakiye ayarı
     "VIRTUAL_BALANCE": 10000.0,
 
