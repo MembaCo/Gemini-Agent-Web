@@ -54,7 +54,6 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_MIN_VOLUME_USDT: Optional[int] = None
     PROACTIVE_SCAN_MTA_ENABLED: Optional[bool] = None
     PROACTIVE_SCAN_USE_NEWS: Optional[bool] = None
-    PROACTIVE_SCAN_USE_SENTIMENT: Optional[bool] = None
     PROACTIVE_SCAN_ENTRY_TIMEFRAME: Optional[str] = None
     PROACTIVE_SCAN_TREND_TIMEFRAME: Optional[str] = None
     PROACTIVE_SCAN_BLACKLIST: Optional[List[str]] = None
@@ -77,6 +76,11 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_VOLUME_AVG_PERIOD: Optional[int] = None
     PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER: Optional[float] = None
     INTERACTIVE_SCAN_USE_HOLISTIC_ANALYSIS: Optional[bool] = None
+
+     # --- YENİ EKLENEN AYARLAR ---
+    PROACTIVE_SCAN_USE_SENTIMENT: Optional[bool] = None
+    USE_NEWSAPI: Optional[bool] = None
+    USE_CRYPTOPANIC_NEWS: Optional[bool] = None
 
 def reschedule_jobs(scheduler, new_settings: dict):
     """Çalışan scheduler görevlerini yeni ayarlara göre günceller."""

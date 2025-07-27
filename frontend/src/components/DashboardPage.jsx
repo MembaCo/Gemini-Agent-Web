@@ -182,7 +182,6 @@ const settingLabelsAndDescriptions = {
     PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT: { label: "Min. Volatilite Eşiği (%)", description: "Bir sinyalin geçerli olması için ATR değerinin, anlık fiyatın en az yüzde kaçı olması gerektiğini belirtir." },
     PROACTIVE_SCAN_USE_VOLUME_FILTER: { label: "Hacim Teyit Filtresi", description: "İşleme giriş sinyalinin, artan bir işlem hacmiyle teyit edilip edilmeyeceğini belirler." },
     PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER: { label: "Hacim Teyit Çarpanı", description: "Son mumun hacminin, geçmiş hacim ortalamasının kaç katı olması gerektiğini belirtir." },
-    // --- YENİ EKLENEN AYARLARIN AÇIKLAMALARI ---
     PROACTIVE_SCAN_USE_GAINERS_LOSERS: { label: "En Çok Yükselen/Düşenleri Kullan", description: "Aday listesine, borsanın anlık 'En Çok Değer Kazananlar' ve 'En Çok Değer Kaybedenler' listesindeki coinleri dahil eder." },
     PROACTIVE_SCAN_TOP_N: { label: "Yükselen/Düşen Listesi Limiti", description: "'En Çok Yükselen/Düşenler' listesinden kaç adet coinin taramaya dahil edileceğini belirler." },
     PROACTIVE_SCAN_USE_VOLUME_SPIKE: { label: "Hacim Patlamalarını Kullan", description: "Aday listesine, işlem hacminde ani ve anormal bir artış yaşayan coinleri dahil eder." },
@@ -193,7 +192,10 @@ const settingLabelsAndDescriptions = {
     PROACTIVE_SCAN_PREFILTER_ENABLED: { label: "AI Öncesi Teknik Filtreleme", description: "Adayları AI'a göndermeden önce RSI, ADX gibi temel göstergelere göre bir ön eleme yapar." },
     PROACTIVE_SCAN_RSI_LOWER: { label: "Ön Filtre RSI Alt Sınır", description: "Ön filtreleme için RSI'ın altında olması gereken değer." },
     PROACTIVE_SCAN_RSI_UPPER: { label: "Ön Filtre RSI Üst Sınır", description: "Ön filtreleme için RSI'ın üstünde olması gereken değer." },
-    PROACTIVE_SCAN_ADX_THRESHOLD: { label: "Ön Filtre ADX Eşiği", description: "Ön filtreleme için ADX'in üzerinde olması gereken trend gücü değeri." }
+    PROACTIVE_SCAN_ADX_THRESHOLD: { label: "Ön Filtre ADX Eşiği", description: "Ön filtreleme için ADX'in üzerinde olması gereken trend gücü değeri." },
+    PROACTIVE_SCAN_USE_SENTIMENT: { label: "Duyarlılık Analizini Kullan (Twitter/X)", description: "Analizlere Twitter (X) üzerinden duyarlılık skorunu dahil eder. .env dosyasında API anahtarı gerektirir." },
+    USE_NEWSAPI: { label: "NewsAPI.org Haber Kaynağı", description: "Analizlere NewsAPI.org üzerinden çekilen en son haber başlıklarını dahil eder. .env dosyasında API anahtarı gerektirir." },
+    USE_CRYPTOPANIC_NEWS: { label: "CryptoPanic Haber Kaynağı", description: "Analizlere CryptoPanic.com üzerinden çekilen haberleri dahil eder. .env dosyasında API anahtarı gerektirir." },
 };
 
 const settingCategories = [
@@ -214,6 +216,7 @@ const settingCategories = [
             'PROACTIVE_SCAN_USE_VOLUME_FILTER', 'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER'
         ] 
     },
+    { title: 'Harici Veri Kaynakları', icon: <Zap className="text-yellow-400" />, keys: ['PROACTIVE_SCAN_USE_SENTIMENT', 'USE_NEWSAPI', 'USE_CRYPTOPANIC_NEWS'] },
     { title: 'Sistem & Otomasyon', icon: <Wrench className="text-gray-400" />, keys: ['POSITION_CHECK_INTERVAL_SECONDS', 'ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 'POSITION_SYNC_INTERVAL_SECONDS', 'TELEGRAM_ENABLED'] },
 ];
 

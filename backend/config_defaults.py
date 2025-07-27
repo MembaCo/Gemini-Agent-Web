@@ -61,8 +61,9 @@ default_settings = {
     "PROACTIVE_SCAN_TOP_N": 10,
     "PROACTIVE_SCAN_MIN_VOLUME_USDT": 750000,
     "PROACTIVE_SCAN_MTA_ENABLED": True,
-    "PROACTIVE_SCAN_USE_NEWS": True,          # Haber analizini kullan
-    "PROACTIVE_SCAN_USE_SENTIMENT": True,     # Twitter duyarlılık analizini kullan
+    "PROACTIVE_SCAN_USE_SENTIMENT": True, # Twitter (X) duyarlılık analizi
+    "USE_NEWSAPI": True,                  # NewsAPI.org haber kaynağı
+    "USE_CRYPTOPANIC_NEWS": True,         # CryptoPanic.com haber kaynağı
     "PROACTIVE_SCAN_ENTRY_TIMEFRAME": "15m",
     "PROACTIVE_SCAN_TREND_TIMEFRAME": "4h",
     
@@ -92,4 +93,6 @@ default_settings = {
     "TELEGRAM_ENABLED": True,
 
     "INTERACTIVE_SCAN_USE_HOLISTIC_ANALYSIS": False, 
+
+    
 }

@@ -6,7 +6,7 @@ import json
 import logging
 from langchain_google_genai import ChatGoogleGenerativeAI
 from google.api_core.exceptions import ResourceExhausted
-from typing import Any # <--- GÜNCELLENDİ
+from typing import Any
 
 from core import app_config
 
@@ -77,8 +77,8 @@ def initialize_agent():
     """Uygulama başladığında veya ayarlar değiştiğinde LLM'i başlatır/yeniden başlatır."""
     os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY") or ""
     os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2") or "false"
-    os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY", "")
-    os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT", "Gemini Trading Agent")
+    os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY") or ""
+    os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT") or "Gemini Trading Agent"
     _initialize_model_list_and_llm()
 
 def llm_invoke_with_fallback(prompt: str):
@@ -107,34 +107,45 @@ def llm_invoke_with_fallback(prompt: str):
     
     raise Exception("Tüm modeller denendi ancak LLM çağrısı başarılı olamadı.")
 
-# --- YENİ BÜTÜNCÜL ANALİZ PROMPT'U ---
 def create_holistic_analysis_prompt(
     symbol: str, 
     price: float, 
     timeframe: str, 
     indicators: dict, 
     news_headlines: list[str], 
-    sentiment_score: float
+    sentiment_score: float | None
 ) -> str:
     """
     Teknik, temel (haber) ve duyarlılık verilerini birleştirerek
     bütüncül bir analiz için prompt oluşturur.
     """
     indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in indicators.items()])
-    news_text = "\n".join([f"- {title}" for title in news_headlines]) if news_headlines else "İlgili haber bulunamadı."
     
-    sentiment_emoji = "😊" if sentiment_score > 0.2 else "😒" if sentiment_score < -0.2 else "😐"
-    sentiment_text = f"{sentiment_score:.2f} {sentiment_emoji}"
+    news_text = ""
+    if news_headlines and "ilgili haber bulunamadı" not in news_headlines[0].lower():
+        headlines = "\n".join([f"- {title}" for title in news_headlines])
+        news_text = f"### 2. Son Haber Başlıkları:\n{headlines}"
+
+    sentiment_text = ""
+    if sentiment_score is not None:
+        sentiment_emoji = "😊" if sentiment_score > 0.2 else "😒" if sentiment_score < -0.2 else "😐"
+        sentiment_score_text = f"{sentiment_score:.2f} {sentiment_emoji}"
+        sentiment_text = f"### 3. Sosyal Medya Duyarlılık Skoru (-1.0 ile +1.0 arası):\n{sentiment_score_text}"
+
+    analysis_framework_parts = ["1.  **Teknik Analiz:** RSI ve ADX gibi göstergeler piyasanın mevcut momentumunu ve trend gücünü gösterir."]
+    if news_text:
+        analysis_framework_parts.append("2.  **Temel Analiz (Haberler):** Son haber başlıkları, fiyatta ani hareketlere neden olabilecek önemli gelişmeleri yansıtır.")
+    if sentiment_text:
+        analysis_framework_parts.append("3.  **Duyarlılık Analizi:** Sosyal medya duyarlılığı, piyasanın genel 'hissiyatını' gösterir.")
+    
+    analysis_framework = "\n    ".join(analysis_framework_parts)
 
     return f"""
-    Sen, hem teknik hem de temel analizi birleştirebilen, piyasa duyarlılığını anlayan
-    üst düzey bir finansal analistsin. Görevin, sana sunulan tüm verileri sentezleyerek
-    net ve gerekçeli bir ticaret kararı ('AL', 'SAT' veya 'BEKLE') vermektir.
+    Sen, farklı veri türlerini birleştirebilen üst düzey bir finansal analistsin.
+    Görevin, sana sunulan tüm verileri sentezleyerek net ve gerekçeli bir ticaret kararı ('AL', 'SAT' veya 'BEKLE') vermektir.
 
     ## ANALİZ ÇERÇEVESİ:
-    1.  **Teknik Analiz:** RSI ve ADX gibi göstergeler piyasanın mevcut momentumunu ve trend gücünü gösterir.
-    2.  **Temel Analiz (Haberler):** Son haber başlıkları, fiyatta ani hareketlere neden olabilecek veya mevcut trendi destekleyebilecek önemli gelişmeleri yansıtır.
-    3.  **Duyarlılık Analizi:** Sosyal medya duyarlılığı, piyasanın genel 'hissiyatını' ve yatırımcı beklentilerini gösterir. Pozitif skorlar iyimserliği, negatif skorlar kötümserliği belirtir.
+    {analysis_framework}
 
     ## SAĞLANAN VERİLER:
     - **Sembol:** {symbol}
@@ -143,17 +154,12 @@ def create_holistic_analysis_prompt(
 
     ### 1. Teknik Göstergeler:
     {indicator_text}
-
-    ### 2. Son Haber Başlıkları:
     {news_text}
-
-    ### 3. Sosyal Medya Duyarlılık Skoru (-1.0 ile +1.0 arası):
     {sentiment_text}
 
     ## GÖREVİN:
-    Bu üç veri setini birleştirerek bir sonuca var. 
-    - Teknik sinyaller haberlerle destekleniyor mu?
-    - Sosyal medya duyarlılığı mevcut trendle uyumlu mu, yoksa bir ayrışma mı var?
+    Bu veri setlerini birleştirerek bir sonuca var. 
+    - Teknik sinyaller diğer verilerle destekleniyor mu?
     - Sadece tek bir veriye değil, tüm resme bakarak karar ver.
 
     ## İSTENEN JSON ÇIKTI FORMATI:
@@ -162,11 +168,11 @@ def create_holistic_analysis_prompt(
       "symbol": "{symbol}",
       "timeframe": "{timeframe}",
       "recommendation": "KARARIN (AL, SAT, veya BEKLE)",
-      "reason": "Kararını, teknik, temel ve duyarlılık verilerini nasıl birleştirdiğini açıklayan kısa ve net gerekçen.",
+      "reason": "Kararını, kullandığın verileri nasıl birleştirdiğini açıklayan kısa ve net gerekçen.",
       "analysis_type": "Holistic",
       "data": {{
         "price": {price},
-        "sentiment_score": {sentiment_score}
+        "sentiment_score": {sentiment_score if sentiment_score is not None else "N/A"}
       }}
     }}
     ```
@@ -322,13 +328,10 @@ def create_final_analysis_prompt(symbol: str, timeframe: str, price: float, indi
     ```
     """
 
-# --- GÜNCELLENMİŞ FONKSİYON ---
 def parse_agent_response(response: Any) -> dict | None:
     if not response:
         return None
     try:
-        # Gelen yanıtın LangChain'in `AIMessage` objesi veya string olabileceğini varsayarak
-        # .content özelliğine erişmeyi deneriz.
         content_to_parse = response.content if hasattr(response, 'content') else str(response)
         
         if "```json" in content_to_parse:
@@ -338,6 +341,5 @@ def parse_agent_response(response: Any) -> dict | None:
         
         return json.loads(content_to_parse.strip())
     except (json.JSONDecodeError, IndexError) as e:
-        # Yanıt objesini string'e çevirerek loglamayı daha güvenli hale getirelim.
         logging.error(f"JSON ayrıştırma hatası. Gelen Yanıt: {str(response)}. Hata: {e}")
         return None

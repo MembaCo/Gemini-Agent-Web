@@ -3,13 +3,16 @@
 
 import os
 import logging
-import cryptocompare
+import requests # <--- YENİ: CryptoPanic için eklendi
 import tweepy
 from textblob import TextBlob
+from newsapi import NewsApiClient
+from core import app_config, cache_manager
 
 # --- API Anahtarlarını Ortam Değişkenlerinden Oku ---
-CRYPTOCOMPARE_API_KEY = os.getenv("CRYPTOCOMPARE_API_KEY")
 TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
+NEWSAPI_API_KEY = os.getenv("NEWSAPI_API_KEY")
+CRYPTOPANIC_API_KEY = os.getenv("CRYPTOPANIC_API_KEY") # <--- YENİ: CryptoPanic API anahtarı
 
 # Tweepy v2 istemcisini (client) başlat
 try:
@@ -22,70 +25,102 @@ except Exception as e:
     twitter_client = None
     logging.error(f"Twitter istemcisi başlatılırken hata: {e}")
 
+# NewsAPI İstemcisini Başlat
+try:
+    if NEWSAPI_API_KEY:
+        newsapi_client = NewsApiClient(api_key=NEWSAPI_API_KEY)
+    else:
+        newsapi_client = None
+        logging.warning("NewsAPI anahtarı bulunamadı. Alternatif haber kaynağı devre dışı.")
+except Exception as e:
+    newsapi_client = None
+    logging.error(f"NewsAPI istemcisi başlatılırken hata: {e}")
 
+
+def get_newsapi_headlines(symbol: str, limit: int = 5) -> list[str]:
+    """NewsAPI kullanarak haber başlıklarını çeker."""
+    if not newsapi_client: return []
+    try:
+        base_symbol = symbol.split('/')[0]
+        q = f'"{base_symbol}" OR "{symbol}" AND (crypto OR cryptocurrency OR bitcoin OR blockchain)'
+        response = newsapi_client.get_everything(q=q, language='en', sort_by='publishedAt', page_size=limit)
+        if response.get('status') == 'ok' and response.get('articles'):
+            titles = [article['title'] for article in response['articles']]
+            logging.info(f"NewsAPI'dan {symbol} için {len(titles)} adet haber başlığı başarıyla çekildi.")
+            return titles
+        return []
+    except Exception as e:
+        logging.error(f"NewsAPI'dan {symbol} için haberler alınırken hata: {e}")
+        return []
+
+# --- YENİ: CryptoPanic Haber Fonksiyonu ---
+def get_cryptopanic_headlines(symbol: str, limit: int = 5) -> list[str]:
+    """CryptoPanic API'sini kullanarak haber başlıklarını çeker."""
+    if not CRYPTOPANIC_API_KEY: return []
+    try:
+        base_symbol = symbol.split('/')[0]
+        url = f"https://cryptopanic.com/api/v1/posts/?auth_token={CRYPTOPANIC_API_KEY}&currencies={base_symbol}&public=true"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if data.get('results'):
+            titles = [item['title'] for item in data['results'][:limit]]
+            logging.info(f"CryptoPanic'ten {symbol} için {len(titles)} adet haber başlığı çekildi.")
+            return titles
+        return []
+    except requests.exceptions.RequestException as e:
+        logging.error(f"{symbol} için CryptoPanic haberleri alınırken hata oluştu: {e}")
+        return []
+
+# --- GÜNCELLENDİ: Ana fonksiyon artık ayarları kontrol ediyor ---
 def get_latest_crypto_news(symbol: str, limit: int = 5) -> list[str]:
     """
-    CryptoCompare API'sini kullanarak belirtilen kripto varlık için en son
-    haber başlıklarını çeker.
-
-    Args:
-        symbol (str): Haberleri alınacak sembol (örn: 'BTC').
-        limit (int): Çekilecek maksimum haber başlığı sayısı.
-
-    Returns:
-        list[str]: Haber başlıklarının bir listesi.
+    Ayarlarda aktif olan haber kaynaklarından en son haber başlıklarını çeker.
     """
-    if not CRYPTOCOMPARE_API_KEY:
-        logging.warning("CryptoCompare API anahtarı bulunamadı. Haber verisi çekilemiyor.")
-        return ["CryptoCompare API anahtarı yapılandırılmamış."]
+    all_headlines = []
 
-    try:
-        cryptocompare.cryptocompare._set_api_key_parameter(CRYPTOCOMPARE_API_KEY)
-        base_symbol = symbol.split('/')[0]
-        news_list = cryptocompare.get_latest_news(base_symbol)
+    if app_config.settings.get("USE_NEWSAPI"):
+        all_headlines.extend(get_newsapi_headlines(symbol, limit))
+    
+    # --- GÜNCELLENDİ: Yeni ayar anahtarı kullanılıyor ---
+    if app_config.settings.get("USE_CRYPTOPANIC_NEWS"):
+        all_headlines.extend(get_cryptopanic_headlines(symbol, limit))
+
+    if not all_headlines:
+        return ["Aktif kaynaklardan ilgili haber bulunamadı."]
         
-        if not news_list:
-            return ["İlgili haber bulunamadı."]
-            
-        titles = [item.get('title', 'Başlık bulunamadı') for item in news_list[:limit]]
-        return titles if titles else ["İlgili haber bulunamadı."]
-        
-    except Exception as e:
-        logging.error(f"{symbol} için haberler alınırken hata oluştu: {e}")
-        return [f"Haber API hatası: {str(e)}"]
+    return list(dict.fromkeys(all_headlines))
 
 
 def get_twitter_sentiment(symbol: str, tweet_count: int = 30) -> dict:
-    """
-    Belirtilen sembol için Twitter'dan son tweet'leri çeker ve TextBlob
-    kullanarak bir duyarlılık skoru hesaplar.
-
-    Args:
-        symbol (str): Duyarlılık analizi yapılacak sembol (örn: 'BTC').
-        tweet_count (int): Analiz için çekilecek tweet sayısı.
-
-    Returns:
-        dict: 'score' ve 'subjectivity' içeren bir sözlük.
-    """
+    # ... (Bu fonksiyon aynı kalıyor)
+    if not app_config.settings.get("PROACTIVE_SCAN_USE_SENTIMENT"):
+        return {"score": 0.0, "subjectivity": 0.0}
+    
+    cache_key = f"sentiment_{symbol}"
+    cached_result = cache_manager.get(cache_key)
+    if cached_result:
+        return cached_result
+        
     if not twitter_client:
         return {"score": 0.0, "subjectivity": 0.0, "error": "Twitter istemcisi yapılandırılmamış."}
 
     try:
         base_symbol = symbol.split('/')[0]
-        # Twitter'da arama yapmak için sorgu oluştur (örn: "$BTC -is:retweet lang:en")
         query = f'"{base_symbol}" OR "${base_symbol}" -is:retweet lang:en'
         
-        # Twitter API'sinden tweet'leri çek
         response = twitter_client.search_recent_tweets(
             query=query,
-            max_results=max(10, min(100, tweet_count)), # API limitleri 10-100 arası
+            max_results=max(10, min(100, tweet_count)),
             tweet_fields=["text"]
         )
         
-        tweets = response.data
+        tweets = response.data if response and hasattr(response, 'data') and response.data else []
         if not tweets:
             logging.warning(f"{symbol} için Twitter'da ilgili tweet bulunamadı.")
-            return {"score": 0.0, "subjectivity": 0.0}
+            result = {"score": 0.0, "subjectivity": 0.0}
+            cache_manager.set(cache_key, result, ttl=600)
+            return result
 
         total_polarity = 0
         total_subjectivity = 0
@@ -95,17 +130,20 @@ def get_twitter_sentiment(symbol: str, tweet_count: int = 30) -> dict:
             total_polarity += analysis.sentiment.polarity
             total_subjectivity += analysis.sentiment.subjectivity
             
-        # Ortalama skorları hesapla
-        avg_polarity = total_polarity / len(tweets)
-        avg_subjectivity = total_subjectivity / len(tweets)
+        avg_polarity = total_polarity / len(tweets) if tweets else 0
+        avg_subjectivity = total_subjectivity / len(tweets) if tweets else 0
         
         logging.info(f"{symbol} için {len(tweets)} tweet analiz edildi. Ortalama Duyarlılık: {avg_polarity:.2f}")
         
-        return {"score": round(avg_polarity, 2), "subjectivity": round(avg_subjectivity, 2)}
+        result = {"score": round(avg_polarity, 2), "subjectivity": round(avg_subjectivity, 2)}
+        cache_manager.set(cache_key, result, ttl=600)
+        return result
 
-    except tweepy.errors.TweepyException as e:
+    except tweepy.TweepyException as e:
         logging.error(f"Twitter API hatası ({symbol}): {e}")
-        return {"score": 0.0, "subjectivity": 0.0, "error": f"Twitter API Hatası: {str(e)}"}
+        result = {"score": 0.0, "subjectivity": 0.0, "error": f"Twitter API Hatası: {str(e)}"}
+        cache_manager.set(cache_key, result, ttl=120) 
+        return result
     except Exception as e:
         logging.error(f"{symbol} için duyarlılık analizi sırasında genel hata: {e}")
         return {"score": 0.0, "subjectivity": 0.0, "error": str(e)}
