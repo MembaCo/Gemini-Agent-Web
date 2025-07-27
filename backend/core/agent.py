@@ -6,6 +6,7 @@ import json
 import logging
 from langchain_google_genai import ChatGoogleGenerativeAI
 from google.api_core.exceptions import ResourceExhausted
+from typing import Any # <--- GÜNCELLENDİ
 
 from core import app_config
 
@@ -74,8 +75,8 @@ def switch_to_next_model():
 
 def initialize_agent():
     """Uygulama başladığında veya ayarlar değiştiğinde LLM'i başlatır/yeniden başlatır."""
-    os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
-    os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2", "false")
+    os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY") or ""
+    os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2") or "false"
     os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY", "")
     os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT", "Gemini Trading Agent")
     _initialize_model_list_and_llm()
@@ -90,7 +91,6 @@ def llm_invoke_with_fallback(prompt: str):
     max_retries = len(model_fallback_list)
     for attempt in range(max_retries):
         try:
-            # DÜZELTME: LangChain'in yeni .invoke() metodu kullanılıyor.
             return llm.invoke(prompt)
         except ResourceExhausted as e:
             logging.warning(f"Kota hatası ({model_fallback_list[current_model_index]}): {e}")
@@ -213,7 +213,6 @@ def create_reanalysis_prompt(position: dict, current_price: float, indicators: d
     timeframe = position.get("timeframe")
     side = "Alış (Long)" if position.get("side") == "buy" else "Satış (Short)"
     entry_price = position.get("entry_price")
-    # YENİ: Veritabanından pozisyonun orijinal açılış sebebini alıyoruz.
     original_reason = position.get("reason", "Belirtilmemiş.")
 
     indicator_text = "\n".join([f"- {key}: {value:.4f}" for key, value in indicators.items()])
@@ -323,13 +322,14 @@ def create_final_analysis_prompt(symbol: str, timeframe: str, price: float, indi
     ```
     """
 
-def parse_agent_response(response: str) -> dict | None:
-    if not response or not isinstance(response, str):
+# --- GÜNCELLENMİŞ FONKSİYON ---
+def parse_agent_response(response: Any) -> dict | None:
+    if not response:
         return None
     try:
-        # Gelen yanıtın LangChain'in `AIMessage` objesi olabileceğini varsayarak
-        # doğrudan .content özelliğine erişiyoruz.
-        content_to_parse = response.content if hasattr(response, 'content') else response
+        # Gelen yanıtın LangChain'in `AIMessage` objesi veya string olabileceğini varsayarak
+        # .content özelliğine erişmeyi deneriz.
+        content_to_parse = response.content if hasattr(response, 'content') else str(response)
         
         if "```json" in content_to_parse:
             content_to_parse = content_to_parse.split("```json")[1].split("```")[0]
@@ -338,5 +338,6 @@ def parse_agent_response(response: str) -> dict | None:
         
         return json.loads(content_to_parse.strip())
     except (json.JSONDecodeError, IndexError) as e:
-        logging.error(f"JSON ayrıştırma hatası. Gelen Yanıt: {response}. Hata: {e}")
+        # Yanıt objesini string'e çevirerek loglamayı daha güvenli hale getirelim.
+        logging.error(f"JSON ayrıştırma hatası. Gelen Yanıt: {str(response)}. Hata: {e}")
         return None
