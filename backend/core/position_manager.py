@@ -95,7 +95,7 @@ async def sync_positions_with_exchange():
                     stop_loss_price = entry_price - sl_distance if side == "buy" else entry_price + sl_distance
                     take_profit_price = entry_price + tp_distance if side == "buy" else entry_price - tp_distance
 
-                    position_to_add = {"symbol": symbol_unified, "side": side, "amount": amount, "entry_price": entry_price, "timeframe": timeframe, "leverage": leverage, "stop_loss": stop_loss_price, "take_profit": take_profit_price}
+                    position_to_add = {"symbol": symbol_unified, "side": side, "amount": amount, "entry_price": entry_price, "timeframe": timeframe, "leverage": leverage, "stop_loss": stop_loss_price, "take_profit": take_profit_price, "reason": "Sistem tarafından borsadan senkronize edildi."}
                     database.add_position(position_to_add)
                     database.log_event("INFO", "Sync", f"Yönetilmeyen pozisyon '{symbol_unified}' sisteme aktarıldı.")
                     logging.info(f"✅ BAŞARILI: '{symbol_unified}' pozisyonu içe aktarıldı ve yönetime alındı.")

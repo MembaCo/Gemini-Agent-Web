@@ -29,6 +29,7 @@ class PositionOpenRequest(BaseModel):
     recommendation: str
     timeframe: str
     price: float
+    reason: str | None = "N/A" # YENİ: Opsiyonel 'reason' alanı eklendi
 
 @router.get("/", summary="Tüm açık pozisyonları al (Anlık P&L ve Fiyat ile)")
 async def get_all_positions():
@@ -77,7 +78,8 @@ async def open_position(request: PositionOpenRequest):
             symbol=_get_unified_symbol(request.symbol),
             recommendation=request.recommendation,
             timeframe=request.timeframe,
-            current_price=request.price
+            current_price=request.price,
+            reason=request.reason
         )
         return result
     except TradeException as te:

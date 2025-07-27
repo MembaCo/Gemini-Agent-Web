@@ -251,7 +251,8 @@ export const ScannerPage = () => {
                 symbol: tradeData.symbol, 
                 recommendation: tradeData.recommendation, 
                 timeframe: tradeData.timeframe, 
-                price: tradeData.data.price, 
+                price: tradeData.data.price,
+                reason: tradeData.reason, 
             }); 
             showToast(result.message || 'Pozisyon başarıyla açıldı!', 'success'); 
             setAnalysisResult(null); 
