@@ -181,14 +181,42 @@ const settingLabelsAndDescriptions = {
     PROACTIVE_SCAN_USE_VOLATILITY_FILTER: { label: "Volatilite Filtresi", description: "ATR kullanarak düşük volatiliteye sahip piyasalardaki sinyalleri filtreler." },
     PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT: { label: "Min. Volatilite Eşiği (%)", description: "Bir sinyalin geçerli olması için ATR değerinin, anlık fiyatın en az yüzde kaçı olması gerektiğini belirtir." },
     PROACTIVE_SCAN_USE_VOLUME_FILTER: { label: "Hacim Teyit Filtresi", description: "İşleme giriş sinyalinin, artan bir işlem hacmiyle teyit edilip edilmeyeceğini belirler." },
-    PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER: { label: "Hacim Teyit Çarpanı", description: "Son mumun hacminin, geçmiş hacim ortalamasının kaç katı olması gerektiğini belirtir." }
+    PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER: { label: "Hacim Teyit Çarpanı", description: "Son mumun hacminin, geçmiş hacim ortalamasının kaç katı olması gerektiğini belirtir." },
+    PROACTIVE_SCAN_USE_GAINERS_LOSERS: { label: "En Çok Yükselen/Düşenleri Kullan", description: "Aday listesine, borsanın anlık 'En Çok Değer Kazananlar' ve 'En Çok Değer Kaybedenler' listesindeki coinleri dahil eder." },
+    PROACTIVE_SCAN_TOP_N: { label: "Yükselen/Düşen Listesi Limiti", description: "'En Çok Yükselen/Düşenler' listesinden kaç adet coinin taramaya dahil edileceğini belirler." },
+    PROACTIVE_SCAN_USE_VOLUME_SPIKE: { label: "Hacim Patlamalarını Kullan", description: "Aday listesine, işlem hacminde ani ve anormal bir artış yaşayan coinleri dahil eder." },
+    PROACTIVE_SCAN_VOLUME_TIMEFRAME: { label: "Hacim Analizi Zaman Aralığı", description: "Hacim patlaması analizinin hangi zaman aralığındaki mumlara göre yapılacağını belirler (örn: 1h, 4h)." },
+    PROACTIVE_SCAN_VOLUME_PERIOD: { label: "Hacim Ortalaması Periyodu", description: "Bir hacim patlamasını tespit etmek için, son mumun hacminin geçmiş kaç mumun ortalamasıyla karşılaştırılacağını belirler." },
+    PROACTIVE_SCAN_VOLUME_MULTIPLIER: { label: "Hacim Patlaması Çarpanı", description: "Son mumun hacminin, geçmiş hacim ortalamasının en az kaç katı olması gerektiğini belirtir." },
+    PROACTIVE_SCAN_MIN_VOLUME_USDT: { label: "Minimum 24s Hacim (USDT)", description: "Taranacak coinler için minimum 24 saatlik işlem hacmi (USDT cinsinden). Düşük hacimli coinleri filtreler." },
+    PROACTIVE_SCAN_PREFILTER_ENABLED: { label: "AI Öncesi Teknik Filtreleme", description: "Adayları AI'a göndermeden önce RSI, ADX gibi temel göstergelere göre bir ön eleme yapar." },
+    PROACTIVE_SCAN_RSI_LOWER: { label: "Ön Filtre RSI Alt Sınır", description: "Ön filtreleme için RSI'ın altında olması gereken değer." },
+    PROACTIVE_SCAN_RSI_UPPER: { label: "Ön Filtre RSI Üst Sınır", description: "Ön filtreleme için RSI'ın üstünde olması gereken değer." },
+    PROACTIVE_SCAN_ADX_THRESHOLD: { label: "Ön Filtre ADX Eşiği", description: "Ön filtreleme için ADX'in üzerinde olması gereken trend gücü değeri." },
+    PROACTIVE_SCAN_USE_SENTIMENT: { label: "Duyarlılık Analizini Kullan (Twitter/X)", description: "Analizlere Twitter (X) üzerinden duyarlılık skorunu dahil eder. .env dosyasında API anahtarı gerektirir." },
+    USE_NEWSAPI: { label: "NewsAPI.org Haber Kaynağı", description: "Analizlere NewsAPI.org üzerinden çekilen en son haber başlıklarını dahil eder. .env dosyasında API anahtarı gerektirir." },
+    USE_CRYPTOPANIC_NEWS: { label: "CryptoPanic Haber Kaynağı", description: "Analizlere CryptoPanic.com üzerinden çekilen haberleri dahil eder. .env dosyasında API anahtarı gerektirir." },
 };
 
 const settingCategories = [
     { title: 'Yapay Zeka Ayarları', icon: <BotMessageSquare className="text-sky-400" />, keys: ['GEMINI_MODEL', 'GEMINI_MODEL_FALLBACK_ORDER', 'USE_MTA_ANALYSIS', 'MTA_TREND_TIMEFRAME'] },
     { title: 'Genel Ticaret & Risk Yönetimi', icon: <Shield className="text-green-400" />, keys: ['LIVE_TRADING', 'VIRTUAL_BALANCE', 'DEFAULT_MARKET_TYPE', 'DEFAULT_ORDER_TYPE', 'LEVERAGE', 'MAX_CONCURRENT_TRADES', 'RISK_PER_TRADE_PERCENT'] },
     { title: 'Kâr & Zarar Stratejileri', icon: <CandlestickChart className="text-amber-400" />, keys: ['USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP', 'USE_SCALP_EXIT', 'SCALP_EXIT_PROFIT_PERCENT', 'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT', 'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT', 'USE_BAILOUT_EXIT', 'BAILOUT_ARM_LOSS_PERCENT', 'BAILOUT_RECOVERY_PERCENT'] },
-    { title: 'Proaktif Tarayıcı Ayarları', icon: <Telescope className="text-indigo-400" />, keys: ['PROACTIVE_SCAN_ENABLED', 'PROACTIVE_SCAN_INTERVAL_SECONDS', 'PROACTIVE_SCAN_AUTO_CONFIRM', 'PROACTIVE_SCAN_BLACKLIST', 'PROACTIVE_SCAN_WHITELIST', 'PROACTIVE_SCAN_USE_VOLATILITY_FILTER', 'PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT', 'PROACTIVE_SCAN_USE_VOLUME_FILTER', 'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER'] },
+    // --- YENİ EKLENEN AYARLARIN KATEGORİYE EKLENMESİ ---
+    { 
+        title: 'Proaktif Tarayıcı Ayarları', 
+        icon: <Telescope className="text-indigo-400" />, 
+        keys: [
+            'PROACTIVE_SCAN_ENABLED', 'PROACTIVE_SCAN_INTERVAL_SECONDS', 'PROACTIVE_SCAN_AUTO_CONFIRM', 
+            'PROACTIVE_SCAN_BLACKLIST', 'PROACTIVE_SCAN_WHITELIST', 
+            'PROACTIVE_SCAN_USE_GAINERS_LOSERS', 'PROACTIVE_SCAN_TOP_N', 'PROACTIVE_SCAN_MIN_VOLUME_USDT',
+            'PROACTIVE_SCAN_USE_VOLUME_SPIKE', 'PROACTIVE_SCAN_VOLUME_TIMEFRAME', 'PROACTIVE_SCAN_VOLUME_PERIOD', 'PROACTIVE_SCAN_VOLUME_MULTIPLIER',
+            'PROACTIVE_SCAN_PREFILTER_ENABLED', 'PROACTIVE_SCAN_RSI_LOWER', 'PROACTIVE_SCAN_RSI_UPPER', 'PROACTIVE_SCAN_ADX_THRESHOLD',
+            'PROACTIVE_SCAN_USE_VOLATILITY_FILTER', 'PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT', 
+            'PROACTIVE_SCAN_USE_VOLUME_FILTER', 'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER'
+        ] 
+    },
+    { title: 'Harici Veri Kaynakları', icon: <Zap className="text-yellow-400" />, keys: ['PROACTIVE_SCAN_USE_SENTIMENT', 'USE_NEWSAPI', 'USE_CRYPTOPANIC_NEWS'] },
     { title: 'Sistem & Otomasyon', icon: <Wrench className="text-gray-400" />, keys: ['POSITION_CHECK_INTERVAL_SECONDS', 'ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 'POSITION_SYNC_INTERVAL_SECONDS', 'TELEGRAM_ENABLED'] },
 ];
 
@@ -197,7 +225,7 @@ const SettingItem = ({ settingKey, value, onSettingsChange }) => {
     const type = typeof value;
 
     const renderInput = () => {
-        const selectOptions = { "GEMINI_MODEL": ["gemini-1.5-flash", "gemini-1.5-pro"], "DEFAULT_MARKET_TYPE": ["future", "spot"], "DEFAULT_ORDER_TYPE": ["LIMIT", "MARKET"], "MTA_TREND_TIMEFRAME": ["15m", "1h", "4h", "1d"] };
+        const selectOptions = { "GEMINI_MODEL": ["gemini-1.5-flash", "gemini-1.5-pro"], "DEFAULT_MARKET_TYPE": ["future", "spot"], "DEFAULT_ORDER_TYPE": ["LIMIT", "MARKET"], "MTA_TREND_TIMEFRAME": ["15m", "1h", "4h", "1d"], "PROACTIVE_SCAN_VOLUME_TIMEFRAME": ["15m", "1h", "4h", "1d"] };
         if (settingKey in selectOptions) { 
             return <select value={value} onChange={e => onSettingsChange(settingKey, e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {selectOptions[settingKey].map(o => <option key={o} value={o}>{o}</option>)}
@@ -250,7 +278,7 @@ const SettingsModal = ({ isVisible, onClose, settingsData, onSave, onSettingsCha
                             <div className="p-4 md:p-6 bg-gray-900/50 space-y-6">
                                 {Object.keys(settingsData)
                                     .filter(key => category.keys.includes(key))
-                                    .sort()
+                                    .sort((a, b) => category.keys.indexOf(a) - category.keys.indexOf(b)) // Kategori içindeki sırayı koru
                                     .map(key => (
                                         <SettingItem
                                             key={key}
@@ -287,7 +315,6 @@ export const DashboardPage = () => {
         closePosition, 
         reanalyzePosition, 
         refreshPnl,
-        // DÜZELTME: Ayarları artık local state'den değil, context'ten alıyoruz
         settings, 
         setSettings, 
         ...auth 
@@ -344,12 +371,9 @@ export const DashboardPage = () => {
 
     // Ana veri yükleme ve periyodik yenileme
     useEffect(() => {
-        // Context'ten gelen ayarlar yüklendiğinde dinamik verileri çek.
         if (Object.keys(settings).length > 0) {
             loadDynamicData(true);
         }
-
-        // Ayarlar penceresi kapalıyken ve ayarlar yüklüyken periyodik yenileme yap
         let intervalId = null;
         if (!isSettingsModalVisible && Object.keys(settings).length > 0) {
             intervalId = setInterval(() => loadDynamicData(false), 5000);
@@ -359,25 +383,21 @@ export const DashboardPage = () => {
         };
     }, [settings, loadDynamicData, isSettingsModalVisible]);
     
-    // Ayarlar modalı açıldığında, geçici state'i global context'ten gelen ayarlar ile doldur.
     useEffect(() => {
         if (isSettingsModalVisible) {
             setTempSettings(settings);
         }
     }, [isSettingsModalVisible, settings]);
 
-    // İşlem geçmişi aramasını yönet
     useEffect(() => {
         setFilteredHistory(tradeHistory.filter(t => t.symbol.toLowerCase().includes(searchQuery.toLowerCase())));
     }, [searchQuery, tradeHistory]);
 
-    // DÜZELTME: handleSaveSettings fonksiyonu artık sayfa verilerini yeniden yüklemiyor.
     const handleSaveSettings = async () => {
         showToast('Ayarlar kaydediliyor...', 'info');
         try {
             await saveSettings(tempSettings);
             showToast('Ayarlar başarıyla kaydedildi.', 'success');
-            // Global context'teki ayarları direkt güncelle
             setSettings(tempSettings);
             setIsSettingsModalVisible(false);
         } catch (err) {
@@ -395,7 +415,6 @@ export const DashboardPage = () => {
     const handleReanalyze = useCallback(async (symbol) => { setAnalyzingSymbol(symbol); showToast(`${symbol} yeniden analiz ediliyor...`, 'info'); try { const result = await reanalyzePosition(symbol); setReanalysisResult(result); } catch (err) { showToast(err.message, 'error'); } finally { setAnalyzingSymbol(null); } }, [reanalyzePosition, showToast]);
     const handleGroupAction = async (actionType) => { const actions = { 'close-all': { title: 'Tümünü Kapat', confirm: "Tüm açık pozisyonları kapatmak istediğinizden emin misiniz?", apiCall: auth.closeAllPositions }, 'close-profitable': { title: 'Kârı Al', confirm: "Kârda olan tüm pozisyonları kapatmak istediğinizden emin misiniz?", apiCall: auth.closeProfitablePositions }, 'close-losing': { title: 'Zararı Kes', confirm: "Zararda olan tüm pozisyonları kapatmak istediğinizden emin misiniz?", apiCall: auth.closeLosingPositions }, 'reanalyze-all': { title: 'Toplu Analiz', confirm: "Tüm açık pozisyonları AI ile yeniden analiz etmek istiyor musunuz? Bu işlem API kredisi kullanacaktır.", apiCall: async () => { const results = await auth.reanalyzeAllPositions(); setBulkReanalysisResults(results); } } }; const action = actions[actionType]; if (!action) return; setConfirmationDetails({ title: action.title, message: action.confirm, onConfirm: async () => { setConfirmationDetails(null); setIsGroupActionLoading(true); try { const result = await action.apiCall(); if(result?.message) showToast(result.message, 'info'); if(actionType !== 'reanalyze-all') { setTimeout(() => loadDynamicData(), 2000); } } catch (err) { showToast(err.message, 'error'); } finally { setIsGroupActionLoading(false); } } }); };
 
-    // Eğer ayarlar veya dinamik veri henüz yüklenmediyse bir yükleme ekranı göster
     if (!isDataLoaded || Object.keys(settings).length === 0) {
         return (
             <div className="bg-gray-900 min-h-screen flex justify-center items-center text-white">
