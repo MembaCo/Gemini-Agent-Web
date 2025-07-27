@@ -1,4 +1,5 @@
 # hash_password.py
+# Bu script sadece hash üretmek içindir, bu şifreyi asla kullanmayın!" gibi belirgin bir uyarı ekleyebilirsiniz.
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

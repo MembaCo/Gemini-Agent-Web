@@ -14,7 +14,7 @@ default_settings = {
     ],
 
 # === CANLI İŞLEM AYARI ===
-    "LIVE_TRADING": True,
+    "LIVE_TRADING": False,
     # YENİ: Simülasyon modu için sanal bakiye ayarı
     "VIRTUAL_BALANCE": 10000.0,
 
@@ -59,8 +59,11 @@ default_settings = {
     "PROACTIVE_SCAN_IN_LOOP": True,
     "PROACTIVE_SCAN_USE_GAINERS_LOSERS": True,
     "PROACTIVE_SCAN_TOP_N": 10,
-    "PROACTIVE_SCAN_MIN_VOLUME_USDT": 1000000,
+    "PROACTIVE_SCAN_MIN_VOLUME_USDT": 750000,
     "PROACTIVE_SCAN_MTA_ENABLED": True,
+    "PROACTIVE_SCAN_USE_SENTIMENT": True, # Twitter (X) duyarlılık analizi
+    "USE_NEWSAPI": True,                  # NewsAPI.org haber kaynağı
+    "USE_CRYPTOPANIC_NEWS": True,         # CryptoPanic.com haber kaynağı
     "PROACTIVE_SCAN_ENTRY_TIMEFRAME": "15m",
     "PROACTIVE_SCAN_TREND_TIMEFRAME": "4h",
     
@@ -72,14 +75,14 @@ default_settings = {
 
     # --- AI Öncesi Filtreleme Ayarları ---
     "PROACTIVE_SCAN_PREFILTER_ENABLED": True,
-    "PROACTIVE_SCAN_RSI_LOWER": 35,
-    "PROACTIVE_SCAN_RSI_UPPER": 65,
-    "PROACTIVE_SCAN_ADX_THRESHOLD": 20,
+    "PROACTIVE_SCAN_RSI_LOWER": 38,
+    "PROACTIVE_SCAN_RSI_UPPER": 62,
+    "PROACTIVE_SCAN_ADX_THRESHOLD": 18,
     
     # YENİ: Gelişmiş Filtre Ayarları
     "PROACTIVE_SCAN_USE_VOLATILITY_FILTER": True, # ATR kullanarak volatilite filtresi aktif edilsin mi?
     "PROACTIVE_SCAN_ATR_PERIOD": 14,              # Volatilite hesaplaması için ATR periyodu.
-    "PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT": 0.5,  # ATR değeri, anlık fiyatın en az yüzde kaçı olmalı? (örn: 0.5 -> %0.5)
+    "PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT": 0.4,  # ATR değeri, anlık fiyatın en az yüzde kaçı olmalı? (örn: 0.5 -> %0.5)
     "PROACTIVE_SCAN_USE_VOLUME_FILTER": True,     # Hacim onayı filtresi aktif edilsin mi?
     "PROACTIVE_SCAN_VOLUME_AVG_PERIOD": 20,       # Ortalama hacim hesaplaması için kullanılacak periyot.
     "PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER": 1.2, # Son mumun hacmi, ortalama hacmin en az kaç katı olmalı? (örn: 1.2 -> %20 daha fazla)
@@ -88,4 +91,8 @@ default_settings = {
     "PROACTIVE_SCAN_BLACKLIST": ["SHIB", "PEPE", "MEME", "DOGE"],
     "PROACTIVE_SCAN_WHITELIST": ["BTC", "ETH", "SOL"],
     "TELEGRAM_ENABLED": True,
+
+    "INTERACTIVE_SCAN_USE_HOLISTIC_ANALYSIS": False, 
+
+    
 }

@@ -2,6 +2,32 @@
 Tüm önemli proje değişiklikleri bu dosyada belgelenmektedir.
 ...
 ---
+### [5.1.0] - 2025-07-27 - Bütüncül Analiz ve Harici Veri Kaynağı Devrimi
+Bu sürüm, botun analiz yeteneklerini temelden değiştirerek, manuel analizlere de haber ve duyarlılık verilerini dahil eder. Aynı zamanda, sorunlu olan cryptocompare kütüphanesi tamamen kaldırılarak yerine daha stabil olan CryptoPanic entegre edilmiş ve tüm harici veri kaynakları arayüzden yönetilebilir hale getirilmiştir.
+
+**🚀 Eklendi (Added)**
+
+CryptoPanic Entegrasyonu: Sorun çıkaran cryptocompare kütüphanesi yerine, daha güvenilir bir haber kaynağı olan CryptoPanic API'ı sisteme entegre edildi.
+
+Modüler Veri Kaynağı Ayarları: Artık NewsAPI, CryptoPanic ve Twitter Duyarlılık Analizi gibi tüm harici veri kaynakları, Ayarlar menüsünden ayrı ayrı açılıp kapatılabilir hale getirildi.
+
+Twitter API Önbellekleme (Caching): Twitter'dan duyarlılık verisi çekilirken alınan 429 Too Many Requests (rate limit) hatasını önlemek için sonuçlar artık 10 dakika, hata durumları ise 2 dakika boyunca önbellekte tutuluyor.
+
+**🧠 Değiştirildi (Changed)**
+
+Bütüncül Manuel Analiz: "Yeni Analiz Başlat" özelliği artık sadece teknik analizle sınırlı değil. Ayarlarda aktifse, analizlerine haber ve duyarlılık verilerini de dahil ederek Proaktif Tarayıcı gibi bütüncül (holistic) bir değerlendirme yapıyor.
+
+Dinamik AI Sorguları (Prompts): Yapay zeka sorguları artık daha akıllı. Eğer bir veri kaynağı (örn: Duyarlılık Analizi) ayarlarda kapalıysa, bu bölüm AI'a gönderilen sorgudan tamamen çıkarılıyor. Bu, AI'ın daha odaklı ve isabetli yanıtlar vermesini sağlıyor.
+
+**✅ Düzeltildi (Fixed)**
+
+KRİTİK cryptocompare Hatası: Loglarda sürekli görünen ve haber akışını durduran AttributeError: module 'cryptocompare' has no attribute 'get_news' hatası, kütüphane tamamen kaldırılarak kalıcı olarak çözüldü.
+
+Geçersiz Sembol (BadSymbol) Sunucu Hatası: Arayüzden borsada listelenmeyen bir sembol için analiz istendiğinde sunucunun 500 Internal Server Error ile çökmesi hatası giderildi. Artık sistem kullanıcıya "Geçersiz sembol" şeklinde anlamlı bir hata mesajı gösteriyor.
+
+Kod Kalitesi (Pylance Hataları): agent.py dosyasında statik kod analizi araçlarının bildirdiği reportArgumentType hataları giderilerek kod daha güvenli ve kararlı hale getirildi.
+
+---
 
 ### [4.8.2] - 2025-07-15 - Kullanıcı Deneyimi ve Arayüz İyileştirmeleri
 Bu sürüm, kullanıcıların sık karşılaştığı küçük sorunları gidererek ve yeni kolaylıklar ekleyerek arayüzün daha akıcı ve sezgisel çalışmasını sağlamaya odaklanmıştır.

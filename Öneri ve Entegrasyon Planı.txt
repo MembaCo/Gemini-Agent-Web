@@ -1,0 +1,53 @@
+Öneri ve Entegrasyon Planı
+Botunuzu en etkili ve maliyetsiz şekilde geliştirmek için şu adımları öneririm:
+
+Haberler için: CryptoCompare API'nin ücretsiz katmanını kullanarak başlayın. Analiz yapılacak her sembol için son 5 haberin başlığını çekin.
+
+Duyarlılık için: X (Twitter) API'si ile ilgili sembol hakkında atılan son 20-30 tweet'i çekin. Bu tweet'lerin metinlerini Python'un TextBlob kütüphanesini kullanarak analiz edip ortalama bir duyarlılık skoru (-1.0 ile +1.0 arasında) üretin.
+
+Entegrasyon:
+
+backend/tools klasörüne market_sentiment.py adında yeni bir dosya oluşturun. Bu dosya, yukarıdaki API'leri çağıran ve veriyi işleyen fonksiyonları içersin.
+
+core/scanner.py içindeki analiz fonksiyonlarında, teknik göstergeleri çektiğiniz gibi bu yeni modülden haber başlıklarını ve duyarlılık skorunu da çekin.
+
+core/agent.py içindeki Gemini'a gönderdiğiniz prompt'u güncelleyin. Mevcut teknik verilere ek olarak şu bilgileri de ekleyin:
+
+"Son Haber Başlıkları": ["...", "...", ...]
+
+"Sosyal Medya Duyarlılık Skoru": 0.65 (Örnek)
+
+Bu sayede yapay zeka, sadece RSI ve ADX değerlerine değil, aynı zamanda piyasanın güncel algısına ve haber akışına bakarak çok daha bütüncül ve güçlü bir analiz yapabilir.
+
+
+
+
+
+
+
+
+Dinamik Risk Ayarı:
+
+Fikir: RISK_PER_TRADE_PERCENT değerini sabit tutmak yerine, piyasa volatilitesine göre dinamik olarak ayarlamak.
+
+Neden? Yüksek volatilite (belirsizlik) dönemlerinde daha düşük risk alıp, piyasa daha stabil olduğunda riski artırarak sermayeyi daha akıllıca yönetebilirsiniz.
+
+Nasıl? ATR (Average True Range) değerini sadece SL/TP için değil, aynı zamanda risk yüzdesini belirlemek için de kullanabilirsiniz. Yüksek ATR, daha düşük risk yüzdesi anlamına gelebilir.
+
+
+Portföy Seviyesinde Risk Yönetimi:
+
+Fikir: Mevcut "işlem başına risk" (RISK_PER_TRADE_PERCENT) yönetimine ek olarak, portföy geneli için günlük veya haftalık maksimum zarar (max drawdown) limiti belirlemek.
+
+Neden? Bu, kötü bir piyasa gününde art arda girilen zararlı işlemlerin toplam sermayeyi aşırı eritmesini engeller.
+
+Nasıl? Belirlenen periyottaki toplam P&L'i takip edip, belirlenen eşiğe ulaşıldığında o gün için yeni pozisyon açmayı durduran bir mekanizmayı open_new_trade fonksiyonuna ekleyebilirsiniz.
+
+
+Asenkron Görev Kuyruğu (Task Queue):
+
+Fikir: Backtest gibi saniyeler veya dakikalar sürebilen ağır işlemleri, anında sonuç dönmesi gereken API sunucusundan ayırıp Celery ve Redis gibi bir görev kuyruğu sistemiyle yönetmek.
+
+Neden? Bu, ağır bir işlem çalışırken bile web arayüzünün donmasını ve takılmasını engeller. Kullanıcı testi başlatır, arayüzde "işleniyor" durumu görür ve işlem bittiğinde sonuçlar otomatik olarak güncellenir.
+
+Nasıl? Projeye Redis ve Celery kütüphanelerini ekleyip, run_backtest gibi API endpoint'lerini bu görevleri kuyruğa atacak şekilde yeniden yapılandırabilirsiniz.

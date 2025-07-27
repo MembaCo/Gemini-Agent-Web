@@ -3,19 +3,20 @@ import { useAuth } from '../context/AuthContext';
 import { ScanSearch, PlayCircle, Loader2, Bot, RefreshCw, SlidersHorizontal, X, Info, Save, Layers } from 'lucide-react';
 import { Modal, Switch, TooltipWrapper, AnalysisResultModal } from './SharedComponents';
 
-// Tarayıcıya özel ayar tanımlamaları
+// --- YENİ VE KAPSAMLI AYAR TANIMLAMALARI ---
 const scannerSettingDefinitions = {
+    // Aday Kaynakları
     'PROACTIVE_SCAN_USE_GAINERS_LOSERS': {
         label: "En Çok Yükselen/Düşenleri Kullan",
-        description: "Aday listesine, borsanın anlık 'En Çok Değer Kazananlar' ve 'En Çok Değer Kaybedenler' listesindeki coinleri dahil eder. Piyasada o an hareketli olan coinleri yakalamak için etkilidir."
+        description: "Aday listesine, borsanın anlık 'En Çok Değer Kazananlar' ve 'En Çok Değer Kaybedenler' listesindeki coinleri dahil eder."
     },
     'PROACTIVE_SCAN_TOP_N': {
         label: "Yükselen/Düşen Listesi Limiti",
-        description: "Yukarıdaki 'En Çok Yükselen/Düşenler' listesinden kaç adet coinin taramaya dahil edileceğini belirler. Örneğin, 10 değeri en çok yükselen ilk 10 ve en çok düşen ilk 10 coini alır."
+        description: "'En Çok Yükselen/Düşenler' listesinden kaç adet coinin taramaya dahil edileceğini belirler."
     },
     'PROACTIVE_SCAN_USE_VOLUME_SPIKE': {
         label: "Hacim Patlamalarını Kullan",
-        description: "Aday listesine, işlem hacminde ani ve anormal bir artış yaşayan ('Hacim Patlaması') coinleri dahil eder. Bu, genellikle bir haber veya büyük bir alım/satım dalgasının habercisidir."
+        description: "Aday listesine, işlem hacminde ani ve anormal bir artış yaşayan ('Hacim Patlaması') coinleri dahil eder."
     },
     'PROACTIVE_SCAN_VOLUME_TIMEFRAME': {
         label: "Hacim Analizi Zaman Aralığı",
@@ -23,31 +24,87 @@ const scannerSettingDefinitions = {
     },
     'PROACTIVE_SCAN_VOLUME_PERIOD': {
         label: "Hacim Ortalaması Periyodu",
-        description: "Bir hacim patlamasını tespit etmek için, son mumun hacminin geçmiş kaç mumun ortalamasıyla karşılaştırılacağını belirler."
+        description: "Son mumun hacminin, geçmiş kaç mumun ortalamasıyla karşılaştırılacağını belirler."
     },
     'PROACTIVE_SCAN_VOLUME_MULTIPLIER': {
         label: "Hacim Patlaması Çarpanı",
-        description: "Son mumun hacminin, geçmiş hacim ortalamasının en az kaç katı olması gerektiğini belirtir. Örneğin, 5.0 değeri, hacmin ortalamanın 5 katı veya daha fazla olması gerektiğini ifade eder."
+        description: "Son mumun hacminin, geçmiş hacim ortalamasının en az kaç katı olması gerektiğini belirtir."
     },
     'PROACTIVE_SCAN_MIN_VOLUME_USDT': {
         label: "Minimum 24s Hacim (USDT)",
-        description: "Taranacak coinler için minimum 24 saatlik işlem hacmi (USDT cinsinden). Bu, 'toz' olarak tabir edilen çok düşük hacimli ve riskli coinleri filtrelemek için kullanılır."
+        description: "Taranacak coinler için minimum 24 saatlik işlem hacmi. Düşük hacimli coinleri filtreler."
     },
     'PROACTIVE_SCAN_BLACKLIST': {
         label: "Kara Liste (Virgülle Ayırın)",
-        description: "Bu listedeki coinler (örn: SHIB,PEPE,DOGE), diğer tüm koşulları sağlasalar bile taramalara asla dahil edilmez."
+        description: "Bu listedeki coinler, diğer tüm koşulları sağlasalar bile taramalara asla dahil edilmez."
     },
     'PROACTIVE_SCAN_WHITELIST': {
         label: "Beyaz Liste (Virgülle Ayırın)",
-        description: "Bu listedeki coinler (örn: BTC,ETH), başka hiçbir koşula bakılmaksızın her tarama döngüsünde mutlaka analize dahil edilir."
+        description: "Bu listedeki coinler, başka hiçbir koşula bakılmaksızın her tarama döngüsünde mutlaka analize dahil edilir."
+    },
+    // AI Öncesi Teknik Filtreleme
+    'PROACTIVE_SCAN_PREFILTER_ENABLED': {
+        label: "AI Öncesi Teknik Filtreleme Aktif",
+        description: "Adayları AI'a göndermeden önce RSI, ADX gibi temel göstergelere göre bir ön eleme yapar. API maliyetlerini düşürür."
+    },
+    'PROACTIVE_SCAN_RSI_LOWER': {
+        label: "Ön Filtre RSI Alt Sınır",
+        description: "Teknik filtreleme için RSI'ın altında olması gereken değer (örn: 35)."
+    },
+    'PROACTIVE_SCAN_RSI_UPPER': {
+        label: "Ön Filtre RSI Üst Sınır",
+        description: "Teknik filtreleme için RSI'ın üstünde olması gereken değer (örn: 65)."
+    },
+    'PROACTIVE_SCAN_ADX_THRESHOLD': {
+        label: "Ön Filtre ADX Eşiği",
+        description: "Teknik filtreleme için ADX'in üzerinde olması gereken trend gücü değeri (örn: 20)."
+    },
+    'PROACTIVE_SCAN_USE_VOLATILITY_FILTER': { 
+        label: "Volatilite Filtresi (ATR)",
+        description: "ATR kullanarak düşük volatiliteye sahip, durgun piyasalardaki sinyalleri filtreler."
+    },
+    'PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT': {
+        label: "Min. Volatilite Eşiği (%)",
+        description: "Bir sinyalin geçerli olması için ATR değerinin, anlık fiyatın en az yüzde kaçı olması gerektiğini belirtir."
+    },
+    'PROACTIVE_SCAN_USE_VOLUME_FILTER': { 
+        label: "Hacim Teyit Filtresi",
+        description: "İşleme giriş sinyalinin, artan bir işlem hacmiyle teyit edilip edilmeyeceğini belirler."
+    },
+    'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER': {
+        label: "Hacim Teyit Çarpanı",
+        description: "Son mumun hacminin, geçmiş ortalama hacmin en az kaç katı olması gerektiğini belirtir."
+    },
+    // Genel Otomasyon ve Analiz
+    'PROACTIVE_SCAN_MTA_ENABLED': {
+        label: "Çoklu Zaman Aralığı (MTA) Analizi",
+        description: "Tarayıcı analizlerinde Çoklu Zaman Aralığı (MTA) analizi kullanılsın mı?"
+    },
+    'PROACTIVE_SCAN_ENTRY_TIMEFRAME': {
+        label: "Giriş Sinyali Zaman Aralığı",
+        description: "Tarayıcının ana sinyalleri arayacağı zaman aralığı (örn: 15m)."
+    },
+    'PROACTIVE_SCAN_TREND_TIMEFRAME': {
+        label: "Ana Trend Zaman Aralığı",
+        description: "MTA için ana trendin belirleneceği üst zaman aralığı (örn: 4h)."
     }
+};
+
+const settingCategories = {
+    'Aday Kaynakları': ['PROACTIVE_SCAN_USE_GAINERS_LOSERS', 'PROACTIVE_SCAN_TOP_N', 'PROACTIVE_SCAN_USE_VOLUME_SPIKE', 'PROACTIVE_SCAN_VOLUME_TIMEFRAME', 'PROACTIVE_SCAN_VOLUME_PERIOD', 'PROACTIVE_SCAN_VOLUME_MULTIPLIER', 'PROACTIVE_SCAN_MIN_VOLUME_USDT', 'PROACTIVE_SCAN_BLACKLIST', 'PROACTIVE_SCAN_WHITELIST'],
+    'AI Öncesi Teknik Filtreleme': ['PROACTIVE_SCAN_PREFILTER_ENABLED', 'PROACTIVE_SCAN_RSI_LOWER', 'PROACTIVE_SCAN_RSI_UPPER', 'PROACTIVE_SCAN_ADX_THRESHOLD', 'PROACTIVE_SCAN_USE_VOLATILITY_FILTER', 'PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT', 'PROACTIVE_SCAN_USE_VOLUME_FILTER', 'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER'],
+    'Genel Analiz Ayarları': ['PROACTIVE_SCAN_MTA_ENABLED', 'PROACTIVE_SCAN_ENTRY_TIMEFRAME', 'PROACTIVE_SCAN_TREND_TIMEFRAME']
 };
 
 const ScannerSettingsModal = ({ settings, isVisible, onClose, onSave, onSettingsChange }) => {
     if (!isVisible) return null;
 
     const renderInput = (key, value) => {
-        const selectOptions = { "PROACTIVE_SCAN_VOLUME_TIMEFRAME": ["15m", "1h", "4h", "1d"] };
+        const selectOptions = { 
+            "PROACTIVE_SCAN_VOLUME_TIMEFRAME": ["15m", "1h", "4h", "1d"],
+            "PROACTIVE_SCAN_ENTRY_TIMEFRAME": ["5m", "15m", "1h", "4h"],
+            "PROACTIVE_SCAN_TREND_TIMEFRAME": ["1h", "4h", "1d"],
+        };
         if (key in selectOptions) {
             return <select value={value} onChange={e => onSettingsChange(key, e.target.value)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {selectOptions[key].map(o => <option key={o} value={o}>{o}</option>)}
@@ -57,7 +114,7 @@ const ScannerSettingsModal = ({ settings, isVisible, onClose, onSave, onSettings
             return <Switch checked={value} onChange={(checked) => onSettingsChange(key, checked)} />;
         }
         if (typeof value === 'number') {
-            return <input type="number" step={key.includes('MULTIPLIER') ? "0.1" : "1"} value={value} onChange={e => onSettingsChange(key, parseFloat(e.target.value) || 0)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-28 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />;
+            return <input type="number" step={key.includes('MULTIPLIER') || key.includes('PERCENT') ? "0.1" : "1"} value={value} onChange={e => onSettingsChange(key, parseFloat(e.target.value) || 0)} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-28 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />;
         }
         if (Array.isArray(value)) {
             return <input type="text" placeholder="Değerleri virgülle ayırın..." value={value.join(', ')} onChange={e => onSettingsChange(key, e.target.value.split(',').map(s => s.trim().toUpperCase()).filter(s => s))} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-1 w-full text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />;
@@ -66,27 +123,32 @@ const ScannerSettingsModal = ({ settings, isVisible, onClose, onSave, onSettings
     };
 
     return (
-        <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-2xl">
+        <Modal isVisible={isVisible} onClose={onClose} maxWidth="max-w-3xl">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-white flex items-center gap-2"><SlidersHorizontal/> Fırsat Tarayıcı Ayarları</h2>
                 <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-700"><X size={24} /></button>
             </div>
-            <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-4 -mr-4">
-                {Object.keys(scannerSettingDefinitions)
-                    .filter(key => key in settings) // Sadece mevcut ayarlarda olanları göster
-                    .map(key => (
-                    <div key={key} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center border-b border-gray-700/50 pb-4">
-                        <div>
-                            <label className="text-gray-200 font-medium">{scannerSettingDefinitions[key].label}</label>
-                            <p className="text-xs text-gray-400 mt-1">{scannerSettingDefinitions[key].description}</p>
-                        </div>
-                        <div className="flex justify-start md:justify-end">
-                            {renderInput(key, settings[key])}
+            <div className="space-y-6 max-h-[65vh] overflow-y-auto pr-4 -mr-4">
+                {Object.entries(settingCategories).map(([category, keys]) => (
+                    <div key={category}>
+                        <h3 className="text-lg font-semibold text-sky-400 mb-4 border-b border-gray-700 pb-2">{category}</h3>
+                        <div className="space-y-4">
+                            {keys.filter(key => key in settings).map(key => (
+                                <div key={key} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                                    <div>
+                                        <label className="text-gray-200 font-medium">{scannerSettingDefinitions[key]?.label || key}</label>
+                                        <p className="text-xs text-gray-400 mt-1">{scannerSettingDefinitions[key]?.description || ''}</p>
+                                    </div>
+                                    <div className="flex justify-start md:justify-end">
+                                        {renderInput(key, settings[key])}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 ))}
             </div>
-            <div className="mt-6 flex justify-end">
+            <div className="mt-8 flex justify-end border-t border-gray-700 pt-6">
                 <button onClick={() => onSave(settings)} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-md flex items-center gap-2">
                     <Save size={18}/> Ayarları Kaydet ve Uygula
                 </button>
@@ -272,7 +334,7 @@ export const ScannerPage = () => {
                         <p className="text-sm text-gray-400 mt-1">Piyasayı potansiyel fırsatlar için tarayın ve seçtiğiniz adayları AI ile analiz edin.</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                        <TooltipWrapper content="Tarayıcı Aday Kaynakları Ayarları">
+                        <TooltipWrapper content="Tüm Tarayıcı Ayarları">
                             <button onClick={() => setIsSettingsModalVisible(true)} className="bg-gray-700 hover:bg-gray-600 text-white font-semibold p-2.5 rounded-md disabled:bg-gray-600/50 disabled:cursor-not-allowed" disabled={isScanning || isBulkRefreshing}>
                                 <SlidersHorizontal size={20}/>
                             </button>
