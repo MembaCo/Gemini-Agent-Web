@@ -234,11 +234,14 @@ def execute_trade_order(symbol: str, side: str, amount: float, price: float = No
 
         is_futures_market = exchange.options.get('defaultType') == 'future'
         
-        if leverage and is_futures_market:
+        market = exchange.market(request_symbol)
+        is_linear_or_inverse = market.get('linear', False) or market.get('inverse', False)
+
+        if leverage and is_futures_market and is_linear_or_inverse:
             logging.info(f"{request_symbol} için kaldıraç ayarlanıyor: {leverage}x")
             exchange.set_leverage(int(leverage), request_symbol)
         elif leverage:
-            logging.warning(f"Kaldıraç ayarlama atlandı. Piyasa tipi 'future' değil, mevcut tip: {exchange.options.get('defaultType')}")
+            logging.warning(f"Kaldıraç ayarlama atlandı. Piyasa tipi 'future' değil veya sembol lineer/inverse değil. Mevcut tip: {exchange.options.get('defaultType')}, Sembol Tipi: {market.get('type')}")
         
         order_type = app_config.settings.get('DEFAULT_ORDER_TYPE', 'LIMIT').lower()
         order = None

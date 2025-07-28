@@ -93,13 +93,14 @@ def get_latest_crypto_news(symbol: str, limit: int = 5) -> list[str]:
 
 
 def get_twitter_sentiment(symbol: str, tweet_count: int = 30) -> dict:
-    # ... (Bu fonksiyon aynı kalıyor)
     if not app_config.settings.get("PROACTIVE_SCAN_USE_SENTIMENT"):
         return {"score": 0.0, "subjectivity": 0.0}
     
+    # YENİ: Önbellek kontrolü eklendi
     cache_key = f"sentiment_{symbol}"
     cached_result = cache_manager.get(cache_key)
     if cached_result:
+        logging.info(f"{symbol} için Twitter duyarlılık verisi önbellekten okundu.")
         return cached_result
         
     if not twitter_client:
@@ -119,7 +120,8 @@ def get_twitter_sentiment(symbol: str, tweet_count: int = 30) -> dict:
         if not tweets:
             logging.warning(f"{symbol} için Twitter'da ilgili tweet bulunamadı.")
             result = {"score": 0.0, "subjectivity": 0.0}
-            cache_manager.set(cache_key, result, ttl=600)
+            # YENİ: Sonucu önbelleğe kaydet
+            cache_manager.set(cache_key, result, ttl=600) # 10 dakika
             return result
 
         total_polarity = 0
@@ -136,13 +138,15 @@ def get_twitter_sentiment(symbol: str, tweet_count: int = 30) -> dict:
         logging.info(f"{symbol} için {len(tweets)} tweet analiz edildi. Ortalama Duyarlılık: {avg_polarity:.2f}")
         
         result = {"score": round(avg_polarity, 2), "subjectivity": round(avg_subjectivity, 2)}
-        cache_manager.set(cache_key, result, ttl=600)
+        # YENİ: Sonucu önbelleğe kaydet
+        cache_manager.set(cache_key, result, ttl=600) # 10 dakika
         return result
 
-    except tweepy.TweepyException as e:
-        logging.error(f"Twitter API hatası ({symbol}): {e}")
-        result = {"score": 0.0, "subjectivity": 0.0, "error": f"Twitter API Hatası: {str(e)}"}
-        cache_manager.set(cache_key, result, ttl=120) 
+    except tweepy.errors.TooManyRequests as e:
+        # YENİ: Rate limit hatasını yakala ve sonucu daha kısa süreliğine önbelleğe al
+        logging.error(f"Twitter API kota limiti aşıldı ({symbol}): {e}")
+        result = {"score": 0.0, "subjectivity": 0.0, "error": "Twitter API kota limiti aşıldı."}
+        cache_manager.set(cache_key, result, ttl=120) # Hata durumunda 2 dakika bekle
         return result
     except Exception as e:
         logging.error(f"{symbol} için duyarlılık analizi sırasında genel hata: {e}")

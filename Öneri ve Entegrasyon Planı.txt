@@ -1,25 +1,71 @@
-Öneri ve Entegrasyon Planı
-Botunuzu en etkili ve maliyetsiz şekilde geliştirmek için şu adımları öneririm:
+Strateji ve Yapay Zeka Geliştirmeleri
+Mevcut yapay zeka entegrasyonunuz ve strateji motorunuz oldukça güçlü. Bunu bir adım öteye taşımak için:
 
-Haberler için: CryptoCompare API'nin ücretsiz katmanını kullanarak başlayın. Analiz yapılacak her sembol için son 5 haberin başlığını çekin.
+Dinamik Risk Yönetimini Hayata Geçirme:
 
-Duyarlılık için: X (Twitter) API'si ile ilgili sembol hakkında atılan son 20-30 tweet'i çekin. Bu tweet'lerin metinlerini Python'un TextBlob kütüphanesini kullanarak analiz edip ortalama bir duyarlılık skoru (-1.0 ile +1.0 arasında) üretin.
+Fikir: Plan dosyanızda bahsettiğiniz "Dinamik Risk Ayarı" fikri mükemmeldir. Sabit bir risk yüzdesi kullanmak yerine, piyasa volatilitesine göre riski ayarlamak, sermayenizi daha etkin korur.
 
-Entegrasyon:
+Nasıl? core/trader.py içerisindeki open_new_trade fonksiyonunda, pozisyon büyüklüğünü hesaplamadan önce RISK_PER_TRADE_PERCENT değerini dinamik olarak belirleyebilirsiniz.
 
-backend/tools klasörüne market_sentiment.py adında yeni bir dosya oluşturun. Bu dosya, yukarıdaki API'leri çağıran ve veriyi işleyen fonksiyonları içersin.
+ATR (Average True Range) değerini, o anki fiyatın yüzdesi olarak hesaplayın (volatilite oranı).
 
-core/scanner.py içindeki analiz fonksiyonlarında, teknik göstergeleri çektiğiniz gibi bu yeni modülden haber başlıklarını ve duyarlılık skorunu da çekin.
+Bu orana göre bir formül oluşturun. Örneğin: eğer volatilite <%1 ise risk %2, %1-3 arası ise risk %1.5, >%3 ise risk %1 kullan gibi.
 
-core/agent.py içindeki Gemini'a gönderdiğiniz prompt'u güncelleyin. Mevcut teknik verilere ek olarak şu bilgileri de ekleyin:
+Bu, botun sakin piyasalarda daha cesur, dalgalı piyasalarda ise daha temkinli davranmasını sağlar.
 
-"Son Haber Başlıkları": ["...", "...", ...]
+Portföy Seviyesinde "Sigorta" Mekanizması:
 
-"Sosyal Medya Duyarlılık Skoru": 0.65 (Örnek)
+Fikir: Yine planınızda belirttiğiniz "Portföy Seviyesinde Risk Yönetimi" kritik bir özelliktir. Bu, art arda gelen kayıpların sermayenizi eritmesini engelleyen bir "acil durum freni" görevi görür.
 
-Bu sayede yapay zeka, sadece RSI ve ADX değerlerine değil, aynı zamanda piyasanın güncel algısına ve haber akışına bakarak çok daha bütüncül ve güçlü bir analiz yapabilir.
+Nasıl? open_new_trade fonksiyonunun en başına bir kontrol mekanizması ekleyebilirsiniz.
 
+database.py içine son 24 saatteki veya o gün içindeki tüm kapalı işlemlerin P&L toplamını getiren yeni bir fonksiyon yazın (get_daily_pnl gibi).
 
+open_new_trade içinde, bu fonksiyonu çağırarak günlük P&L'i kontrol edin.
+
+Eğer toplam zarar, Ayarlar'dan belirleyeceğiniz bir eşiği (örneğin -250 USDT veya toplam bakiyenin -%5'i) aştıysa, o gün yeni pozisyon açmayı durdurun ve bir TradeException fırlatın.
+
+Rejim Değişikliği Tespiti (Regime Detection):
+
+Fikir: Piyasa her zaman aynı karakterde değildir (yükseliş trendi, düşüş trendi, yatay/dalgalı piyasa). Botun, mevcut piyasa "rejimini" anlayıp stratejisini buna göre adapte etmesi, başarı oranını ciddi şekilde artırır.
+
+Nasıl? core/scanner.py veya core/agent.py içinde, ana piyasa (örneğin BTC/USDT) üzerinde daha uzun vadeli göstergeler kullanarak bir "rejim filtresi" oluşturabilirsiniz.
+
+Örneğin, BTC'nin 200 günlük hareketli ortalamasının (MA200) altında olduğu zamanlarda sadece SAT yönlü sinyallere izin verin (veya AL sinyallerini daha düşük riskle açın).
+
+Bu rejim bilgisini (Piyasa Rejimi: Düşüş Trendi gibi) AI'a gönderilen prompt'lara ekleyerek, yapay zekanın daha bağlamsal ve akıllı kararlar vermesini sağlayabilirsiniz.
+
+Performans ve Ölçeklenebilirlik
+Uygulamanız büyüdükçe performans kritik hale gelecektir.
+
+Asenkron Görev Kuyruğu (Celery & Redis):
+
+Fikir: Planınızda belirttiğiniz bu madde, kullanıcı deneyimi için en önemli geliştirmelerden biridir.
+
+Nasıl? run_backtest, run_proactive_scan ve hatta reanalyze_all_positions gibi uzun süren API çağrılarını bir görev kuyruğuna atayın.
+
+Kullanıcı butona tıkladığında, API anında bir "görev başlatıldı" yanıtı döner.
+
+Frontend, görevin durumunu periyodik olarak sorgular (/tasks/{task_id}/status gibi yeni bir endpoint üzerinden) ve işlem bittiğinde sonuçları gösterir. Bu, arayüzün "donmasını" tamamen engeller.
+
+Veritabanı Optimizasyonu:
+
+Fikir: trade_history ve events tabloları zamanla on binlerce satıra ulaşabilir. Bu durum, raporlama ve dashboard sorgularını yavaşlatabilir.
+
+Nasıl? Önemli sütunlara (örneğin trade_history tablosundaki closed_at ve symbol) veritabanı index'leri ekleyin. Bu, özellikle tarih aralığına veya sembole göre filtreleme yapan sorguları dramatik şekilde hızlandırır. database.py içindeki init_db fonksiyonuna CREATE INDEX komutları ekleyebilirsiniz.
+
+Kullanıcı Deneyimi ve Yeni Özellikler
+Backtest Sonuçları için Gelişmiş Görselleştirme:
+
+Fikir: Backtest sonuçlarını daha anlaşılır kılmak için grafiksel araçlar ekleyin.
+
+Nasıl? BacktestingPage.jsx bileşenine, test süresince bakiye değişimini gösteren bir çizgi grafik (balance_history verisini kullanarak) ekleyebilirsiniz. Bu, kullanıcıların stratejilerinin sadece sonuca değil, süreçteki iniş çıkışlarına da hakim olmasını sağlar.
+
+Strateji Parametre Optimizasyonu:
+
+Fikir: Kullanıcıların en iyi strateji parametrelerini (örn: en iyi MA periyotları) bulmasını kolaylaştırın.
+
+Nasıl? Backtest motoruna bir "optimizasyon" özelliği ekleyebilirsiniz. Kullanıcı bir parametre için bir aralık belirtir (örn: ma_short için 10'dan 30'a 5'er adımlarla) ve sistem bu aralıktaki tüm kombinasyonlar için backtest'i otomatik olarak çalıştırıp en kârlı sonucu raporlar. Bu, botun en güçlü özelliklerinden biri haline gelebilir.
 
 
 
