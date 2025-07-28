@@ -10,14 +10,16 @@ from google.api_core.exceptions import ResourceExhausted
 import database
 from core import app_config, agent
 from core.trader import open_new_trade, TradeException
-# YENİ: Yeni market sentiment fonksiyonları import ediliyor
 from tools import (
     get_top_gainers_losers,
     get_volume_spikes,
     _get_technical_indicators_logic,
     get_price_with_cache,
-    get_latest_crypto_news, # YENİ
-    get_twitter_sentiment  # YENİ
+    get_latest_crypto_news,
+    get_twitter_sentiment,
+    # YENİ: Yeni piyasa keşif fonksiyonları import ediliyor
+    get_technical_screener_results,
+    get_socially_trending_coins
 )
 from tools.utils import _get_unified_symbol
 from tools import exchange as exchange_tools
@@ -28,10 +30,12 @@ semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
 async def _fetch_candidates_from_sources(config: dict) -> list[dict]:
     """
-    Whitelist, gainers/losers ve volume spike kaynaklarından potansiyel işlem
-    adaylarını toplar ve blacklist ile filtreler.
+    Tüm kaynaklardan (Whitelist, Gainers/Losers, Volume Spike, Screener, Social)
+    potansiyel işlem adaylarını toplar ve blacklist ile filtreler.
     """
     all_symbols_with_source = {}
+
+    # --- Mevcut Kaynaklar ---
     whitelist = config.get('PROACTIVE_SCAN_WHITELIST', [])
     for symbol in whitelist:
         unified_symbol = _get_unified_symbol(symbol)
@@ -55,17 +59,40 @@ async def _fetch_candidates_from_sources(config: dict) -> list[dict]:
                 return await asyncio.to_thread(get_volume_spikes, volume_timeframe, volume_period, volume_multiplier, min_volume_usdt)
         return []
 
-    gainers_losers_results, volume_spikes_results = await asyncio.gather(
-        fetch_gainers_losers(),
-        fetch_volume_spikes()
-    )
+    # --- YENİ: Yeni Kaynakları Çeken Fonksiyonlar ---
+    async def fetch_screener_results():
+        async with semaphore:
+            return await asyncio.to_thread(get_technical_screener_results)
 
+    async def fetch_social_trends():
+        async with semaphore:
+            return await asyncio.to_thread(get_socially_trending_coins)
+
+    # --- Tüm kaynakları paralel olarak çalıştır ---
+    results = await asyncio.gather(
+        fetch_gainers_losers(),
+        fetch_volume_spikes(),
+        fetch_screener_results(),
+        fetch_social_trends()
+    )
+    gainers_losers_results, volume_spikes_results, screener_results, social_results = results
+
+    # --- Sonuçları tek bir listede birleştir ---
     for item in gainers_losers_results:
         if item['symbol'] not in all_symbols_with_source:
             all_symbols_with_source[item['symbol']] = {"symbol": item['symbol'], "source": "Gainers/Losers"}
     for item in volume_spikes_results:
         if item['symbol'] not in all_symbols_with_source:
             all_symbols_with_source[item['symbol']] = {"symbol": item['symbol'], "source": "Volume Spike"}
+    for symbol in screener_results:
+        unified_symbol = _get_unified_symbol(symbol)
+        if unified_symbol not in all_symbols_with_source:
+            all_symbols_with_source[unified_symbol] = {"symbol": unified_symbol, "source": "Technical Screener"}
+    for symbol in social_results:
+        unified_symbol = _get_unified_symbol(symbol)
+        if unified_symbol not in all_symbols_with_source:
+            all_symbols_with_source[unified_symbol] = {"symbol": unified_symbol, "source": "Social Trend"}
+
 
     blacklist = {s.upper().strip() for s in config.get('PROACTIVE_SCAN_BLACKLIST', [])}
     final_candidates = [ data for symbol, data in all_symbols_with_source.items() if symbol.split('/')[0] not in blacklist ]

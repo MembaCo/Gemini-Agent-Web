@@ -33,3 +33,15 @@ from .market_sentiment import (
     get_latest_crypto_news,
     get_twitter_sentiment,
 )
+
+# Yeni eklenen duyarlılık ve haber modülünü de dahil ediyoruz
+from .market_sentiment import (
+    get_latest_crypto_news,
+    get_twitter_sentiment,
+)
+
+# YENİ: Piyasa keşif modülünü dahil ediyoruz
+from .market_discovery import (
+    get_technical_screener_results,
+    get_socially_trending_coins,
+)

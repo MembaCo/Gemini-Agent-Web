@@ -196,6 +196,8 @@ const settingLabelsAndDescriptions = {
     PROACTIVE_SCAN_USE_SENTIMENT: { label: "Duyarlılık Analizini Kullan (Twitter/X)", description: "Analizlere Twitter (X) üzerinden duyarlılık skorunu dahil eder. .env dosyasında API anahtarı gerektirir." },
     USE_NEWSAPI: { label: "NewsAPI.org Haber Kaynağı", description: "Analizlere NewsAPI.org üzerinden çekilen en son haber başlıklarını dahil eder. .env dosyasında API anahtarı gerektirir." },
     USE_CRYPTOPANIC_NEWS: { label: "CryptoPanic Haber Kaynağı", description: "Analizlere CryptoPanic.com üzerinden çekilen haberleri dahil eder. .env dosyasında API anahtarı gerektirir." },
+    DISCOVERY_USE_TAAPI_SCANNER: { label: "Teknik Tarayıcıyı Kullan (TAAPI.io)", description: "Aday listesine, tüm piyasayı RSI gibi teknik göstergelere göre tarayan TAAPI.io'dan gelen sonuçları ekler. .env'de API anahtarı gerektirir." },
+    DISCOVERY_USE_COINGECKO_TRENDING: { label: "Trend Tarayıcıyı Kullan (CoinGecko)", description: "Aday listesine, CoinGecko'da son 24 saatte popüler olan coin'leri ekler. API anahtarı gerektirmez." },
 };
 
 const settingCategories = [
@@ -215,6 +217,11 @@ const settingCategories = [
             'PROACTIVE_SCAN_USE_VOLATILITY_FILTER', 'PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT', 
             'PROACTIVE_SCAN_USE_VOLUME_FILTER', 'PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER'
         ] 
+    },
+    { 
+        title: 'Harici Keşif Kaynakları', 
+        icon: <Zap className="text-yellow-400" />, 
+        keys: ['DISCOVERY_USE_TAAPI_SCANNER', 'DISCOVERY_USE_COINGECKO_TRENDING', 'PROACTIVE_SCAN_USE_SENTIMENT', 'USE_NEWSAPI', 'USE_CRYPTOPANIC_NEWS'] 
     },
     { title: 'Harici Veri Kaynakları', icon: <Zap className="text-yellow-400" />, keys: ['PROACTIVE_SCAN_USE_SENTIMENT', 'USE_NEWSAPI', 'USE_CRYPTOPANIC_NEWS'] },
     { title: 'Sistem & Otomasyon', icon: <Wrench className="text-gray-400" />, keys: ['POSITION_CHECK_INTERVAL_SECONDS', 'ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 'POSITION_SYNC_INTERVAL_SECONDS', 'TELEGRAM_ENABLED'] },

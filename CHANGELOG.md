@@ -1,6 +1,25 @@
 # Değişiklik Günlüğü
 Tüm önemli proje değişiklikleri bu dosyada belgelenmektedir.
 ...
+
+---
+### [5.2.0] - 2025-07-28 - Fırsat Tarayıcı'ya Harici Veri Kaynakları Entegrasyonu
+Bu sürüm, Fırsat Tarayıcı'nın potansiyel işlem adayı bulma yeteneklerini kökten değiştiren iki yeni ve güçlü harici veri kaynağı ekler. Artık bot, sadece mevcut piyasa hareketlerine tepki vermekle kalmıyor, aynı zamanda teknik olarak olgunlaşmış veya sosyal medyada popüler olmaya başlayan fırsatları proaktif olarak keşfedebiliyor.
+
+**🚀 Eklendi (Added)**
+
+Gelişmiş Teknik Piyasa Taraması (TAAPI.io Entegrasyonu): Fırsat Tarayıcı, artık tüm Binance USDT piyasasını belirli teknik kriterlere göre (örneğin, "RSI değeri 35'in altında olan tüm coin'ler") tarayabilen yeni bir "Technical Screener" kaynağına sahiptir. Bu, stratejiye uygun adayları çok daha erken bir aşamada tespit etme imkanı sağlar.
+
+Sosyal Medya Trend Tespiti (CoinGecko Entegrasyonu): Başlangıçta entegre edilmeye çalışılan fakat stabil olmayan LunarCrush API'ı yerine, CoinGecko'nun ücretsiz ve güvenilir "Trend Olan Coin'ler" API'ı sisteme dahil edildi. Bu yeni "Social Trend" kaynağı, son 24 saatte popülerliği artan coin'leri bularak "hype" potansiyeli olan fırsatları listeler.
+
+**✅ Düzeltildi (Fixed)**
+
+Harici API Hataları Giderildi: Geliştirme sürecinde karşılaşılan çok sayıda harici API hatası (402 Payment Required, 404 Not Found, DNS Resolution Error) kalıcı olarak çözüldü. Sorunlu olan LunarCrush API'ı tamamen kaldırılarak yerine daha stabil bir alternatif olan CoinGecko getirildi.
+
+**🔄 Değiştirildi (Changed)**
+
+Tarayıcı Aday Kaynakları Genişletildi: _fetch_candidates_from_sources fonksiyonu, yeni eklenen teknik tarayıcı ve sosyal trend kaynaklarından gelen verileri de paralel olarak işleyecek ve aday listesine ekleyecek şekilde tamamen yeniden yapılandırıldı.
+
 ---
 ### [5.1.0] - 2025-07-27 - Bütüncül Analiz ve Harici Veri Kaynağı Devrimi
 Bu sürüm, botun analiz yeteneklerini temelden değiştirerek, manuel analizlere de haber ve duyarlılık verilerini dahil eder. Aynı zamanda, sorunlu olan cryptocompare kütüphanesi tamamen kaldırılarak yerine daha stabil olan CryptoPanic entegre edilmiş ve tüm harici veri kaynakları arayüzden yönetilebilir hale getirilmiştir.

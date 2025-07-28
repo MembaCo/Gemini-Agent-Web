@@ -67,6 +67,8 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_RSI_LOWER: Optional[int] = None
     PROACTIVE_SCAN_RSI_UPPER: Optional[int] = None
     PROACTIVE_SCAN_ADX_THRESHOLD: Optional[int] = None
+    DISCOVERY_USE_TAAPI_SCANNER: Optional[bool] = None
+    DISCOVERY_USE_COINGECKO_TRENDING: Optional[bool] = None
     
     # YENİ: Gelişmiş Filtre Ayarları 
     PROACTIVE_SCAN_USE_VOLATILITY_FILTER: Optional[bool] = None

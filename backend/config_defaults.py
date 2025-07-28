@@ -87,6 +87,10 @@ default_settings = {
     "PROACTIVE_SCAN_VOLUME_AVG_PERIOD": 20,       # Ortalama hacim hesaplaması için kullanılacak periyot.
     "PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER": 1.2, # Son mumun hacmi, ortalama hacmin en az kaç katı olmalı? (örn: 1.2 -> %20 daha fazla)
     
+    # YENİ: Harici Keşif Kaynakları Ayarları
+    "DISCOVERY_USE_TAAPI_SCANNER": True,       # TAAPI.io teknik tarayıcısı aktif edilsin mi?
+    "DISCOVERY_USE_COINGECKO_TRENDING": True, # CoinGecko trend verisi aktif edilsin mi?
+    
     # --- FİLTRELEME & BİLDİRİM ---
     "PROACTIVE_SCAN_BLACKLIST": ["SHIB", "PEPE", "MEME", "DOGE"],
     "PROACTIVE_SCAN_WHITELIST": ["BTC", "ETH", "SOL"],
