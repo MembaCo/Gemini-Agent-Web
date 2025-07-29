@@ -1,17 +1,35 @@
-.gitignore
-
+# Ortam değişkenleri
 backend/.env
-__pycache__
-backend/__pycache__
-backend/core/__pycache__
-backend/api/__pycache__
-backend/tool/__pycache__
-backend/database/__pycache__
-backend/data/trades.db
-
-frontend/node_modules
-
-.git
 frontend/.env
-backend/trades.db
-data/trades.db
+
+# Python Cache
+__pycache__/
+backend/__pycache__/
+backend/*/__pycache__/
+
+# Veritabanı ve Kalıcı Veriler
+data/
+
+# Frontend Bağımlılıkları
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# Log Dosyaları
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editör ve OS Dosyaları
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
