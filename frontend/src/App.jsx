@@ -3,7 +3,7 @@ import { useAuth } from './context/AuthContext';
 import { LoginPage } from './components/LoginPage';
 import { DashboardPage } from './components/DashboardPage';
 import { BacktestingPage } from './components/BacktestingPage';
-import { ScannerPage } from './components/ScannerPage'; // YENİ
+import { ScannerPage } from './components/ScannerPage';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 const Toast = ({ message, type, onClose }) => {
@@ -17,6 +17,15 @@ const Toast = ({ message, type, onClose }) => {
     </div>
   );
 };
+
+// YENİ: Footer Bileşeni
+const Footer = () => (
+    <footer className="text-center py-8">
+        <p className="text-xs text-gray-500">
+            Designed by <a href="http://algoit.co.uk" target="_blank">&copy; ALGO - IT Solutions </a> Made with ❤️
+        </p>
+    </footer>
+);
 
 export default function App() {
     const { isAuthenticated, toast, setToast } = useAuth();
@@ -51,6 +60,9 @@ export default function App() {
                 {view === 'dashboard' && <DashboardPage />}
                 {view === 'scanner' && <ScannerPage />}
                 {view === 'backtesting' && <BacktestingPage />}
+
+                {/* YENİ: Footer Eklendi */}
+                <Footer />
             </div>
             <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
         </div>
