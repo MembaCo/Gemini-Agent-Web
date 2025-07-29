@@ -1,5 +1,6 @@
 # backend/telegram_bot.py
 # @author: Memba Co.
+# AÇIKLAMA: Raporlama, tarayıcı entegrasyonu ve ayar sihirbazı yetenekleri eklendi.
 
 import logging
 import os
@@ -19,7 +20,8 @@ import mplfinance as mpf
 import pandas as pd
 import json
 
-from core import app_config, trader, agent as core_agent
+# --- YENİ: Gerekli modüller import edildi ---
+from core import app_config, trader, agent as core_agent, scanner as core_scanner
 from tools import (
     _get_unified_symbol, get_price_with_cache, get_technical_indicators,
     exchange as exchange_tools
@@ -28,14 +30,13 @@ import database
 from ccxt.base.errors import BadSymbol
 
 # DÜZELTME: ConversationHandler ile ilgili uyarıyı gizler.
-# Bu, botun işlevselliğini etkilemez, sadece konsol çıktısını temizler.
 warnings.filterwarnings("ignore", category=PTBUserWarning)
 
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# ConversationHandler için durumlar
-SELECTING_CATEGORY, SELECTING_SETTING, TYPING_VALUE = range(3)
+# GÜNCELLENDİ: ConversationHandler için yeni state eklendi
+SELECTING_CATEGORY, SELECTING_SETTING, TYPING_VALUE, SELECTING_BOOL = range(4)
 
 # --- Yardımcı Fonksiyonlar ---
 
@@ -57,7 +58,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         'Kullanılabilir komutlar:\n'
         '• `/analiz <SEMBOL>` - Sembol analizi yapar.\n'
         '• `/pozisyonlar` - Açık pozisyonları interaktif yönetir.\n'
-        '• `/rapor` - Genel performans raporu sunar.\n'
+        '• `/rapor` - Canlı verilerle genel performans raporu sunar.\n'
+        '• `/tara` - Manuel olarak Fırsat Tarayıcı\'yı çalıştırır.\n'
         '• `/ayarlar` - Mevcut ayarları gösterir.\n'
         '• `/ayar_degistir` - Ayarları interaktif değiştirir.\n'
         '• `/durdur` & `/baslat` - Canlı ticareti durdurur/başlatır.\n'
@@ -67,25 +69,75 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode=ParseMode.MARKDOWN
     )
 
+# --- GÜNCELLENDİ: Rapor komutu artık canlı PNL içeriyor ---
 async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         history = database.get_trade_history()
         positions = database.get_all_positions()
-        total_pnl = sum(t['pnl'] for t in history)
+
+        # Geçmiş Performans (Kapalı İşlemler)
+        total_pnl_history = sum(t['pnl'] for t in history)
         total_trades = len(history)
         winning_trades = sum(1 for t in history if t['pnl'] > 0)
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+
+        # Anlık Durum (Açık Pozisyonlar)
+        active_pnl = 0.0
+        for pos in positions:
+            current_price = get_price_with_cache(pos['symbol'])
+            if current_price:
+                pnl = (current_price - pos['entry_price']) * pos['amount'] if pos['side'] == 'buy' else (pos['entry_price'] - current_price) * pos['amount']
+                active_pnl += pnl
+        
         message = (
-            f"📊 *Performans Raporu*\n\n"
-            f"• *Toplam P&L:* `{total_pnl:+.2f} USDT`\n"
-            f"• *Kazanma Oranı:* `{win_rate:.2f}%`\n"
-            f"• *Kazanan İşlem:* `{winning_trades}`\n"
-            f"• *Kaybeden İşlem:* `{total_trades - winning_trades}`\n"
-            f"• *Aktif Pozisyon:* `{len(positions)}`"
+            f"📊 *Genel Performans Raporu*\n\n"
+            f"*--- Geçmiş Performans (Kapalı İşlemler) --*\n"
+            f"• *Toplam P&L:* `{total_pnl_history:+.2f} USDT`\n"
+            f"• *Kazanma Oranı:* `{win_rate:.2f}%` (`{winning_trades}`/`{total_trades - winning_trades}`)\n"
+            f"• *Toplam Kapalı İşlem:* `{total_trades}`\n\n"
+            f"*--- Anlık Durum (Açık Pozisyonlar) --*\n"
+            f"• *Aktif Pozisyon Sayısı:* `{len(positions)}`\n"
+            f"• *Anlık Dalgalanan P&L:* `{active_pnl:+.2f} USDT`\n\n"
+            f"📈 *Net Toplam P&L:* `{(total_pnl_history + active_pnl):+.2f} USDT`"
         )
         await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         await update.message.reply_text(f"Rapor oluşturulurken hata: {e}")
+
+# --- YENİ: Proaktif Tarayıcıyı tetikleyen komut ---
+async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Proaktif tarayıcıyı manuel olarak tetikler ve sonuçları özetler."""
+    try:
+        await update.message.reply_text(
+            '🔍 *Proaktif Tarama Başlatılıyor...*\n'
+            'Bu işlem piyasa durumuna göre birkaç dakika sürebilir, lütfen bekleyin.',
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        scan_result = await core_scanner.execute_single_scan_cycle()
+        
+        summary = scan_result.get('summary', {})
+        total_scanned = summary.get('total_scanned', 0)
+        pre_filtered = summary.get('pre_filtered_count', 0)
+        ai_analyzed = summary.get('ai_analyzed', 0)
+        opportunities = summary.get('opportunities_found', 0)
+        auto_trades = summary.get('auto_trades_opened', 0)
+        errors = summary.get('data_errors', 0)
+
+        message = (
+            f"✅ *Tarama Tamamlandı!*\n\n"
+            f"• *Taranan Toplam Aday:* `{total_scanned}`\n"
+            f"• *Teknik Filtreden Geçen:* `{pre_filtered}`\n"
+            f"• *AI ile Analiz Edilen:* `{ai_analyzed}`\n"
+            f"• *Bulunan Fırsat Sayısı:* `{opportunities}`\n"
+            f"• *Otomatik Açılan İşlem:* `{auto_trades}`\n"
+            f"• *Karşılaşılan Hata:* `{errors}`"
+        )
+        
+        await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+
+    except Exception as e:
+        await update.message.reply_text(f"Tarama sırasında bir hata oluştu: {e}")
 
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -297,18 +349,61 @@ async def select_setting_callback(update: Update, context: ContextTypes.DEFAULT_
     await query.edit_message_text("Hangi ayarı değiştirmek istersiniz?", reply_markup=reply_markup)
     return TYPING_VALUE
 
+# --- GÜNCELLENDİ: Artık boolean ayarlar için buton gösteriyor ---
 async def ask_for_value_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
     setting_key = query.data.split('_')[1]
     context.user_data['setting_to_change'] = setting_key
+    
     settings = database.get_all_settings()
     current_value = settings.get(setting_key)
+    setting_type = type(current_value).__name__
+
+    if setting_type == 'bool':
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ AKTİF", callback_data="bool_True"),
+                InlineKeyboardButton("❌ PASİF", callback_data="bool_False"),
+            ],
+            [InlineKeyboardButton("İptal", callback_data="cancel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            f"`{setting_key}` için yeni değeri seçin.\n*Mevcut Değer:* `{'AKTİF' if current_value else 'PASİF'}`",
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return SELECTING_BOOL
+
     await query.edit_message_text(
         f"`{setting_key}` için yeni değeri girin.\n*Mevcut Değer:* `{current_value}`\n\n_İşlemi iptal etmek için /iptal yazın._",
         parse_mode=ParseMode.MARKDOWN
     )
     return TYPING_VALUE
+
+# --- YENİ: Boolean butonlarından gelen yanıtı işleyen fonksiyon ---
+async def receive_bool_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    
+    setting_key = context.user_data.get('setting_to_change')
+    if not setting_key:
+        await query.edit_message_text("Hata, lütfen `/ayar_degistir` ile yeniden başlatın.")
+        return ConversationHandler.END
+
+    new_value_str = query.data.split('_')[1]
+    new_value = new_value_str.lower() == 'true'
+
+    try:
+        database.update_settings({setting_key: new_value})
+        app_config.load_config()
+        await query.edit_message_text(f"✅ Ayar güncellendi!\n`{setting_key}` = `{'AKTİF' if new_value else 'PASİF'}`", parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        await query.edit_message_text(f"❌ Ayar güncellenirken hata: {e}")
+        
+    context.user_data.clear()
+    return ConversationHandler.END
 
 async def receive_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     setting_key = context.user_data.get('setting_to_change')
@@ -349,6 +444,7 @@ def create_telegram_app():
         return None
     application = Application.builder().token(TOKEN).build()
 
+    # --- GÜNCELLENDİ: Conversation handler yeni state'i içerecek şekilde ---
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('ayar_degistir', settings_conversation_start)],
         states={
@@ -358,6 +454,7 @@ def create_telegram_app():
                 CallbackQueryHandler(settings_conversation_start, pattern='^back_to_category$'),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_value)
             ],
+            SELECTING_BOOL: [CallbackQueryHandler(receive_bool_value, pattern='^bool_')],
         },
         fallbacks=[
             CommandHandler('iptal', cancel_conversation),
@@ -376,6 +473,7 @@ def create_telegram_app():
     application.add_handler(CommandHandler("grafik", chart_command))
     application.add_handler(CommandHandler("detay", detail_command))
     application.add_handler(CommandHandler("analiz", analyze_command))
+    application.add_handler(CommandHandler("tara", scan_command)) # Yeni komut eklendi
     
     application.add_handler(CallbackQueryHandler(button_callback_handler))
 
