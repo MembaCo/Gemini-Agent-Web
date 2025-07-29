@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Filler, Legend, ArcElement, BarElement } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { Settings, Search, Play, Loader2, Cpu, Terminal, Zap, Wallet, ShieldX, DollarSign, Brain, AlertTriangle, RefreshCw, Bot, X, Save, HelpCircle, ChevronsUpDown, ChevronDown, BotMessageSquare, Wrench, Shield, CandlestickChart, Telescope } from 'lucide-react';
+import { Settings, Search, Play, Loader2, Cpu, Terminal, Zap, Wallet, ShieldX, DollarSign, Brain, AlertTriangle, RefreshCw, Bot, X, Save, HelpCircle, ChevronsUpDown, ChevronDown, BotMessageSquare, Wrench, Shield, CandlestickChart, Telescope, TrendingUp } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import TradeHistory from './TradeHistory';
@@ -143,7 +143,6 @@ const ActivePositions = ({ positions, onClose, onRefresh, onReanalyze, refreshin
     </div>
 );
 
-
 const settingLabelsAndDescriptions = {
     GEMINI_MODEL: { label: "Ana AI Modeli", description: "Ana analizler için kullanılacak varsayılan Gemini AI modeli." },
     GEMINI_MODEL_FALLBACK_ORDER: { label: "Yedek Model Sırası", description: "Bir modelin kotası dolduğunda denenecek yedek modellerin sıralı listesi (virgülle ayırın)." },
@@ -154,8 +153,15 @@ const settingLabelsAndDescriptions = {
     USE_MTA_ANALYSIS: { label: "Çoklu Zaman Aralığı (MTA) Analizi", description: "Manuel ve proaktif analizlerde Çoklu Zaman Aralığı (MTA) analizi kullanılsın mı?" },
     MTA_TREND_TIMEFRAME: { label: "MTA Ana Trend Zaman Aralığı", description: "MTA için ana trendin belirleneceği üst zaman aralığı (örn: 4h, 1d)." },
     LEVERAGE: { label: "Kaldıraç Oranı", description: "Vadeli işlemlerde kullanılacak kaldıraç oranı." },
-    RISK_PER_TRADE_PERCENT: { label: "İşlem Başına Risk (%)", description: "Her bir işlemde toplam sermayenin yüzde kaçının riske edileceği." },
     MAX_CONCURRENT_TRADES: { label: "Maksimum Eşzamanlı İşlem", description: "Aynı anda açık olabilecek maksimum pozisyon sayısı." },
+    RISK_PER_TRADE_PERCENT: { label: "Sabit Risk/İşlem (%)", description: "Dinamik Risk Yönetimi kapalıyken her işlemde kullanılacak sabit risk yüzdesi." },
+    USE_DYNAMIC_RISK: { label: "Dinamik Risk Yönetimi", description: "Aktifse, bot piyasa volatilitesine göre işlem başına riski otomatik olarak ayarlar." },
+    DYNAMIC_RISK_BASE_RISK: { label: "Temel Risk (%)", description: "Dinamik modda, ortalama volatilite koşullarında kullanılacak temel risk yüzdesi." },
+    DYNAMIC_RISK_ATR_PERIOD: { label: "Volatilite Periyodu (ATR)", description: "Piyasa volatilitesini ölçmek için kullanılacak ATR periyodu." },
+    DYNAMIC_RISK_LOW_VOL_THRESHOLD: { label: "Düşük Volatilite Eşiği (%)", description: "Volatilitenin bu seviyenin altına düşmesi durumunda risk artırılır (ATR/Fiyat oranı)." },
+    DYNAMIC_RISK_LOW_VOL_MULTIPLIER: { label: "Düşük Vol. Risk Çarpanı", description: "Düşük volatilitede temel riski artırmak için kullanılacak katsayı (örn: 1.5 = %50 daha fazla risk)." },
+    DYNAMIC_RISK_HIGH_VOL_THRESHOLD: { label: "Yüksek Volatilite Eşiği (%)", description: "Volatilitenin bu seviyenin üstüne çıkması durumunda risk azaltılır (ATR/Fiyat oranı)." },
+    DYNAMIC_RISK_HIGH_VOL_MULTIPLIER: { label: "Yüksek Vol. Risk Çarpanı", description: "Yüksek volatilitede temel riski azaltmak için kullanılacak katsayı (örn: 0.75 = %25 daha az risk)." },
     USE_ATR_FOR_SLTP: { label: "ATR ile SL/TP Belirleme", description: "Zarar Durdur (SL) ve Kâr Al (TP) seviyelerini belirlemek için ATR göstergesi kullanılsın mı?" },
     ATR_MULTIPLIER_SL: { label: "ATR Çarpanı (SL)", description: "Stop-Loss mesafesini belirlemek için ATR değerinin çarpılacağı katsayı." },
     RISK_REWARD_RATIO_TP: { label: "Risk/Ödül Oranı (TP)", description: "Kâr Al (TP) seviyesinin, riske (SL mesafesi) göre oranı." },
@@ -202,9 +208,22 @@ const settingLabelsAndDescriptions = {
 
 const settingCategories = [
     { title: 'Yapay Zeka Ayarları', icon: <BotMessageSquare className="text-sky-400" />, keys: ['GEMINI_MODEL', 'GEMINI_MODEL_FALLBACK_ORDER', 'USE_MTA_ANALYSIS', 'MTA_TREND_TIMEFRAME'] },
-    { title: 'Genel Ticaret & Risk Yönetimi', icon: <Shield className="text-green-400" />, keys: ['LIVE_TRADING', 'VIRTUAL_BALANCE', 'DEFAULT_MARKET_TYPE', 'DEFAULT_ORDER_TYPE', 'LEVERAGE', 'MAX_CONCURRENT_TRADES', 'RISK_PER_TRADE_PERCENT'] },
+    { title: 'Genel Ticaret Ayarları', icon: <Shield className="text-green-400" />, keys: ['LIVE_TRADING', 'VIRTUAL_BALANCE', 'DEFAULT_MARKET_TYPE', 'DEFAULT_ORDER_TYPE', 'LEVERAGE', 'MAX_CONCURRENT_TRADES'] },
+    { 
+        title: 'Dinamik Risk Yönetimi', 
+        icon: <TrendingUp className="text-teal-400" />, 
+        keys: [
+            'USE_DYNAMIC_RISK',
+            'RISK_PER_TRADE_PERCENT',
+            'DYNAMIC_RISK_BASE_RISK',
+            'DYNAMIC_RISK_ATR_PERIOD',
+            'DYNAMIC_RISK_LOW_VOL_THRESHOLD',
+            'DYNAMIC_RISK_LOW_VOL_MULTIPLIER',
+            'DYNAMIC_RISK_HIGH_VOL_THRESHOLD',
+            'DYNAMIC_RISK_HIGH_VOL_MULTIPLIER'
+        ] 
+    },
     { title: 'Kâr & Zarar Stratejileri', icon: <CandlestickChart className="text-amber-400" />, keys: ['USE_ATR_FOR_SLTP', 'ATR_MULTIPLIER_SL', 'RISK_REWARD_RATIO_TP', 'USE_SCALP_EXIT', 'SCALP_EXIT_PROFIT_PERCENT', 'USE_TRAILING_STOP_LOSS', 'TRAILING_STOP_ACTIVATION_PERCENT', 'USE_PARTIAL_TP', 'PARTIAL_TP_TARGET_RR', 'PARTIAL_TP_CLOSE_PERCENT', 'USE_BAILOUT_EXIT', 'BAILOUT_ARM_LOSS_PERCENT', 'BAILOUT_RECOVERY_PERCENT'] },
-    // --- YENİ EKLENEN AYARLARIN KATEGORİYE EKLENMESİ ---
     { 
         title: 'Proaktif Tarayıcı Ayarları', 
         icon: <Telescope className="text-indigo-400" />, 
@@ -219,11 +238,10 @@ const settingCategories = [
         ] 
     },
     { 
-        title: 'Harici Keşif Kaynakları', 
+        title: 'Harici Keşif & Veri Kaynakları', 
         icon: <Zap className="text-yellow-400" />, 
         keys: ['DISCOVERY_USE_TAAPI_SCANNER', 'DISCOVERY_USE_COINGECKO_TRENDING', 'PROACTIVE_SCAN_USE_SENTIMENT', 'USE_NEWSAPI', 'USE_CRYPTOPANIC_NEWS'] 
     },
-    { title: 'Harici Veri Kaynakları', icon: <Zap className="text-yellow-400" />, keys: ['PROACTIVE_SCAN_USE_SENTIMENT', 'USE_NEWSAPI', 'USE_CRYPTOPANIC_NEWS'] },
     { title: 'Sistem & Otomasyon', icon: <Wrench className="text-gray-400" />, keys: ['POSITION_CHECK_INTERVAL_SECONDS', 'ORPHAN_ORDER_CHECK_INTERVAL_SECONDS', 'POSITION_SYNC_INTERVAL_SECONDS', 'TELEGRAM_ENABLED'] },
 ];
 

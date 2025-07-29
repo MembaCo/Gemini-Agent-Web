@@ -1,18 +1,5 @@
-Strateji ve Yapay Zeka Geliştirmeleri
-Mevcut yapay zeka entegrasyonunuz ve strateji motorunuz oldukça güçlü. Bunu bir adım öteye taşımak için:
 
-Dinamik Risk Yönetimini Hayata Geçirme:
-
-Fikir: Plan dosyanızda bahsettiğiniz "Dinamik Risk Ayarı" fikri mükemmeldir. Sabit bir risk yüzdesi kullanmak yerine, piyasa volatilitesine göre riski ayarlamak, sermayenizi daha etkin korur.
-
-Nasıl? core/trader.py içerisindeki open_new_trade fonksiyonunda, pozisyon büyüklüğünü hesaplamadan önce RISK_PER_TRADE_PERCENT değerini dinamik olarak belirleyebilirsiniz.
-
-ATR (Average True Range) değerini, o anki fiyatın yüzdesi olarak hesaplayın (volatilite oranı).
-
-Bu orana göre bir formül oluşturun. Örneğin: eğer volatilite <%1 ise risk %2, %1-3 arası ise risk %1.5, >%3 ise risk %1 kullan gibi.
-
-Bu, botun sakin piyasalarda daha cesur, dalgalı piyasalarda ise daha temkinli davranmasını sağlar.
-
+Plan v5.4.0 
 Portföy Seviyesinde "Sigorta" Mekanizması:
 
 Fikir: Yine planınızda belirttiğiniz "Portföy Seviyesinde Risk Yönetimi" kritik bir özelliktir. Bu, art arda gelen kayıpların sermayenizi eritmesini engelleyen bir "acil durum freni" görevi görür.
@@ -25,6 +12,8 @@ open_new_trade içinde, bu fonksiyonu çağırarak günlük P&L'i kontrol edin.
 
 Eğer toplam zarar, Ayarlar'dan belirleyeceğiniz bir eşiği (örneğin -250 USDT veya toplam bakiyenin -%5'i) aştıysa, o gün yeni pozisyon açmayı durdurun ve bir TradeException fırlatın.
 
+
+Plan v5.5.0
 Rejim Değişikliği Tespiti (Regime Detection):
 
 Fikir: Piyasa her zaman aynı karakterde değildir (yükseliş trendi, düşüş trendi, yatay/dalgalı piyasa). Botun, mevcut piyasa "rejimini" anlayıp stratejisini buna göre adapte etmesi, başarı oranını ciddi şekilde artırır.
@@ -38,6 +27,7 @@ Bu rejim bilgisini (Piyasa Rejimi: Düşüş Trendi gibi) AI'a gönderilen promp
 Performans ve Ölçeklenebilirlik
 Uygulamanız büyüdükçe performans kritik hale gelecektir.
 
+Plan v5.6.0
 Asenkron Görev Kuyruğu (Celery & Redis):
 
 Fikir: Planınızda belirttiğiniz bu madde, kullanıcı deneyimi için en önemli geliştirmelerden biridir.
@@ -48,6 +38,7 @@ Kullanıcı butona tıkladığında, API anında bir "görev başlatıldı" yan�
 
 Frontend, görevin durumunu periyodik olarak sorgular (/tasks/{task_id}/status gibi yeni bir endpoint üzerinden) ve işlem bittiğinde sonuçları gösterir. Bu, arayüzün "donmasını" tamamen engeller.
 
+v5.7.0
 Veritabanı Optimizasyonu:
 
 Fikir: trade_history ve events tabloları zamanla on binlerce satıra ulaşabilir. Bu durum, raporlama ve dashboard sorgularını yavaşlatabilir.

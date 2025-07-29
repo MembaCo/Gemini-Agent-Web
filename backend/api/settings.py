@@ -17,11 +17,11 @@ router = APIRouter(
 
 class SettingsUpdate(BaseModel):
     # Bu model, 'config_defaults.py' dosyasındaki tüm anahtarları içermelidir.
-    # Pydantic, tip doğrulaması ve IDE otomatik tamamlama için bunu kullanır.
+    # ... (Mevcut ayarlarınız burada) ...
     GEMINI_MODEL: Optional[str] = None
     GEMINI_MODEL_FALLBACK_ORDER: Optional[List[str]] = None
     LIVE_TRADING: Optional[bool] = None
-    VIRTUAL_BALANCE: Optional[float] = None # YENİ
+    VIRTUAL_BALANCE: Optional[float] = None
     DEFAULT_MARKET_TYPE: Optional[str] = None
     DEFAULT_ORDER_TYPE: Optional[str] = None
     USE_MTA_ANALYSIS: Optional[bool] = None
@@ -29,6 +29,17 @@ class SettingsUpdate(BaseModel):
     LEVERAGE: Optional[float] = None
     RISK_PER_TRADE_PERCENT: Optional[float] = None
     MAX_CONCURRENT_TRADES: Optional[int] = None
+    
+    # --- YENİ EKLENEN DİNAMİK RİSK AYARLARI ---
+    USE_DYNAMIC_RISK: Optional[bool] = None
+    DYNAMIC_RISK_ATR_PERIOD: Optional[int] = None
+    DYNAMIC_RISK_BASE_RISK: Optional[float] = None
+    DYNAMIC_RISK_LOW_VOL_THRESHOLD: Optional[float] = None
+    DYNAMIC_RISK_LOW_VOL_MULTIPLIER: Optional[float] = None
+    DYNAMIC_RISK_HIGH_VOL_THRESHOLD: Optional[float] = None
+    DYNAMIC_RISK_HIGH_VOL_MULTIPLIER: Optional[float] = None
+    
+    # ... (Diğer mevcut ayarlarınız burada devam ediyor) ...
     USE_ATR_FOR_SLTP: Optional[bool] = None
     ATR_MULTIPLIER_SL: Optional[float] = None
     RISK_REWARD_RATIO_TP: Optional[float] = None
@@ -69,8 +80,6 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_ADX_THRESHOLD: Optional[int] = None
     DISCOVERY_USE_TAAPI_SCANNER: Optional[bool] = None
     DISCOVERY_USE_COINGECKO_TRENDING: Optional[bool] = None
-    
-    # YENİ: Gelişmiş Filtre Ayarları 
     PROACTIVE_SCAN_USE_VOLATILITY_FILTER: Optional[bool] = None
     PROACTIVE_SCAN_ATR_PERIOD: Optional[int] = None
     PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT: Optional[float] = None
@@ -78,11 +87,10 @@ class SettingsUpdate(BaseModel):
     PROACTIVE_SCAN_VOLUME_AVG_PERIOD: Optional[int] = None
     PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER: Optional[float] = None
     INTERACTIVE_SCAN_USE_HOLISTIC_ANALYSIS: Optional[bool] = None
-
-     # --- YENİ EKLENEN AYARLAR ---
     PROACTIVE_SCAN_USE_SENTIMENT: Optional[bool] = None
     USE_NEWSAPI: Optional[bool] = None
     USE_CRYPTOPANIC_NEWS: Optional[bool] = None
+
 
 def reschedule_jobs(scheduler, new_settings: dict):
     """Çalışan scheduler görevlerini yeni ayarlara göre günceller."""

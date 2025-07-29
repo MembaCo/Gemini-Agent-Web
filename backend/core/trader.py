@@ -13,7 +13,6 @@ from notifications import send_telegram_message, format_open_position_message, f
 class TradeException(Exception):
     pass
 
-# DÜZELTME: 'reason' parametresine varsayılan bir değer atandı.
 def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_price: float, reason: str = "N/A"):
     logging.info(f"Ticaret mantığı başlatıldı: {symbol} için yeni pozisyon açılıyor.")
 
@@ -25,9 +24,38 @@ def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_pri
         raise TradeException("Maksimum eşzamanlı pozisyon limitine ulaşıldı.")
 
     trade_side = "buy" if "AL" in recommendation else "sell"
-    atr_result = get_atr_value(symbol, timeframe)
+    
+    # ATR periyodunu dinamik risk ayarından veya varsayılan SL/TP ayarından al
+    atr_period = app_config.settings.get('DYNAMIC_RISK_ATR_PERIOD', 14) if app_config.settings.get('USE_DYNAMIC_RISK') else 14
+    atr_result = get_atr_value(symbol, timeframe) # timeframe parametresini düzelt
     if atr_result.get("status") != "success":
         raise TradeException(f"ATR değeri alınamadı: {atr_result.get('message')}")
+    
+    atr_value = atr_result['value']
+
+    # --- YENİ: DİNAMİK RİSK HESAPLAMA MANTIĞI ---
+    risk_per_trade_percent = app_config.settings['RISK_PER_TRADE_PERCENT']
+
+    if app_config.settings.get('USE_DYNAMIC_RISK'):
+        volatility_percentage = (atr_value / current_price) * 100
+        base_risk = app_config.settings.get('DYNAMIC_RISK_BASE_RISK', 1.5)
+        low_thresh = app_config.settings.get('DYNAMIC_RISK_LOW_VOL_THRESHOLD', 1.5)
+        high_thresh = app_config.settings.get('DYNAMIC_RISK_HIGH_VOL_THRESHOLD', 4.0)
+        low_multi = app_config.settings.get('DYNAMIC_RISK_LOW_VOL_MULTIPLIER', 1.5)
+        high_multi = app_config.settings.get('DYNAMIC_RISK_HIGH_VOL_MULTIPLIER', 0.75)
+        
+        dynamic_risk_per_trade = base_risk
+        if volatility_percentage < low_thresh:
+            dynamic_risk_per_trade *= low_multi
+            logging.info(f"Dinamik Risk: Düşük volatilite tespit edildi ({volatility_percentage:.2f}% < {low_thresh}%), risk artırıldı: {dynamic_risk_per_trade:.2f}%")
+        elif volatility_percentage > high_thresh:
+            dynamic_risk_per_trade *= high_multi
+            logging.info(f"Dinamik Risk: Yüksek volatilite tespit edildi ({volatility_percentage:.2f}% > {high_thresh}%), risk azaltıldı: {dynamic_risk_per_trade:.2f}%")
+        else:
+            logging.info(f"Dinamik Risk: Ortalama volatilite tespit edildi ({volatility_percentage:.2f}%), temel risk kullanılıyor: {dynamic_risk_per_trade:.2f}%")
+        
+        risk_per_trade_percent = dynamic_risk_per_trade
+    # --- DİNAMİK RİSK HESAPLAMA SONU ---
 
     wallet_balance = 0.0
     if is_live:
@@ -38,11 +66,10 @@ def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_pri
     else:
         wallet_balance = app_config.settings.get('VIRTUAL_BALANCE', 10000.0)
         logging.info(f"Simülasyon Modu: Sanal bakiye ({wallet_balance} USDT) kullanılıyor.")
-
-    atr_value = atr_result['value']
+    
     sl_distance = atr_value * app_config.settings['ATR_MULTIPLIER_SL']
     stop_loss_price = current_price - sl_distance if trade_side == "buy" else current_price + sl_distance
-    risk_amount_usd = wallet_balance * (app_config.settings['RISK_PER_TRADE_PERCENT'] / 100)
+    risk_amount_usd = wallet_balance * (risk_per_trade_percent / 100) # Değişkeni burada kullan
     sl_price_diff = abs(current_price - stop_loss_price)
 
     if sl_price_diff <= 1e-9:
@@ -53,7 +80,7 @@ def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_pri
     if is_live:
         notional_value = trade_amount * current_price
         required_margin = notional_value / app_config.settings['LEVERAGE']
-        logging.info(f"Dinamik Pozisyon Hesabı: Bakiye={wallet_balance:.2f} USDT, Risk={risk_amount_usd:.2f} USDT, Pozisyon Büyüklüğü={notional_value:.2f} USDT, Gerekli Marjin={required_margin:.2f} USDT")
+        logging.info(f"Dinamik Pozisyon Hesabı: Bakiye={wallet_balance:.2f} USDT, Risk={risk_amount_usd:.2f} USDT (Risk %{risk_per_trade_percent:.2f}), Pozisyon Büyüklüğü={notional_value:.2f} USDT, Gerekli Marjin={required_margin:.2f} USDT")
         if required_margin > wallet_balance:
             raise TradeException(f"Gerekli marjin ({required_margin:.2f} USDT) mevcut bakiyeden ({wallet_balance:.2f} USDT) fazla.")
 
@@ -70,7 +97,6 @@ def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_pri
 
     if result.get("status") == "success":
         final_entry_price = result.get('fill_price', current_price)
-
         managed_position_details = {
             "symbol": symbol, "side": trade_side, "amount": trade_amount,
             "entry_price": final_entry_price,
@@ -83,7 +109,6 @@ def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_pri
         if not is_live:
             log_message = "[SİMÜLASYON] " + log_message
         database.log_event("SUCCESS", "Trade", log_message)
-
         message = format_open_position_message(managed_position_details, is_simulation=not is_live)
         send_telegram_message(message)
         logging.info(f"Pozisyon başarıyla açıldı ve kaydedildi: {symbol} @ {final_entry_price}")
@@ -94,6 +119,7 @@ def open_new_trade(symbol: str, recommendation: str, timeframe: str, current_pri
         raise TradeException(error_msg)
 
 
+# ... (close_existing_trade fonksiyonu aynı kalabilir) ...
 def close_existing_trade(symbol: str, close_reason: str = "MANUAL"):
     is_live = app_config.settings.get('LIVE_TRADING', False)
     log_prefix = "" if is_live else "[SİMÜLASYON] "

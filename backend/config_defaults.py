@@ -13,9 +13,8 @@ default_settings = {
         "gemini-2.5-pro",
     ],
 
-# === CANLI İŞLEM AYARI ===
+    # === CANLI İŞLEM AYARI ===
     "LIVE_TRADING": False,
-    # YENİ: Simülasyon modu için sanal bakiye ayarı
     "VIRTUAL_BALANCE": 10000.0,
 
     # === TEMEL STRATEJİ AYARLARI ===
@@ -28,13 +27,22 @@ default_settings = {
     # === RİSK YÖNETİMİ AYARLARI ===
     "RISK_PER_TRADE_PERCENT": 5.0,
     "MAX_CONCURRENT_TRADES": 5,
-    
+
+    # YENİ: Dinamik Risk Yönetimi Ayarları
+    "USE_DYNAMIC_RISK": True,                   # Bu özellik aktif edilsin mi?
+    "DYNAMIC_RISK_ATR_PERIOD": 14,              # Volatilite ölçümü için kullanılacak ATR periyodu.
+    "DYNAMIC_RISK_BASE_RISK": 1.5,              # Ortalama volatilitede kullanılacak temel risk yüzdesi.
+    "DYNAMIC_RISK_LOW_VOL_THRESHOLD": 1.5,      # ATR / Fiyat oranının bu değerin altına düşmesi "Düşük Volatilite" sayılır.
+    "DYNAMIC_RISK_LOW_VOL_MULTIPLIER": 1.5,     # Düşük volatilitede temel riskin çarpılacağı katsayı (örn: 1.5x daha fazla risk al).
+    "DYNAMIC_RISK_HIGH_VOL_THRESHOLD": 4.0,     # ATR / Fiyat oranının bu değerin üstüne çıkması "Yüksek Volatilite" sayılır.
+    "DYNAMIC_RISK_HIGH_VOL_MULTIPLIER": 0.75,   # Yüksek volatilitede temel riskin çarpılacağı katsayı (örn: 0.75x daha az risk al).
+
     # --- Stop-Loss ve Take-Profit Ayarları ---
     "USE_ATR_FOR_SLTP": True,
     "ATR_MULTIPLIER_SL": 2.0,
     "RISK_REWARD_RATIO_TP": 2.0,
     "USE_SCALP_EXIT": False,
-    "SCALP_EXIT_PROFIT_PERCENT": 5.0, 
+    "SCALP_EXIT_PROFIT_PERCENT": 5.0,
 
     # --- Gelişmiş Kâr Alma Stratejileri ---
     "USE_TRAILING_STOP_LOSS": True,
@@ -43,12 +51,13 @@ default_settings = {
     "PARTIAL_TP_TARGET_RR": 1.0,
     "PARTIAL_TP_CLOSE_PERCENT": 50.0,
 
-    # YENİ: Akıllı Zarar Azaltma (Bailout Exit) Ayarları
-    "USE_BAILOUT_EXIT": True,              # Bu özellik aktif edilsin mi?
-    "BAILOUT_ARM_LOSS_PERCENT": -2.0,      # Pozisyon yüzde kaç zarara ulaşınca bu özellik devreye girsin?
-    "BAILOUT_RECOVERY_PERCENT": 1.0,       # Görülen en dipten yüzde kaç toparlanınca pozisyon kapatılsın?
-    "USE_AI_BAILOUT_CONFIRMATION": True,   # YENİ: Bailout kararını AI'a onaylat. False ise, AI'a sormadan direkt kapatır.
+    # --- Akıllı Zarar Azaltma (Bailout Exit) Ayarları ---
+    "USE_BAILOUT_EXIT": True,
+    "BAILOUT_ARM_LOSS_PERCENT": -2.0,
+    "BAILOUT_RECOVERY_PERCENT": 1.0,
+    "USE_AI_BAILOUT_CONFIRMATION": True,
 
+    # (Diğer ayarlarınız burada devam ediyor...)
     # === OTOMASYON & TARAYICI AYARLARI ===
     "POSITION_CHECK_INTERVAL_SECONDS": 60,
     "ORPHAN_ORDER_CHECK_INTERVAL_SECONDS": 300,
@@ -79,17 +88,17 @@ default_settings = {
     "PROACTIVE_SCAN_RSI_UPPER": 62,
     "PROACTIVE_SCAN_ADX_THRESHOLD": 18,
     
-    # YENİ: Gelişmiş Filtre Ayarları
-    "PROACTIVE_SCAN_USE_VOLATILITY_FILTER": True, # ATR kullanarak volatilite filtresi aktif edilsin mi?
-    "PROACTIVE_SCAN_ATR_PERIOD": 14,              # Volatilite hesaplaması için ATR periyodu.
-    "PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT": 0.4,  # ATR değeri, anlık fiyatın en az yüzde kaçı olmalı? (örn: 0.5 -> %0.5)
-    "PROACTIVE_SCAN_USE_VOLUME_FILTER": True,     # Hacim onayı filtresi aktif edilsin mi?
-    "PROACTIVE_SCAN_VOLUME_AVG_PERIOD": 20,       # Ortalama hacim hesaplaması için kullanılacak periyot.
-    "PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER": 1.2, # Son mumun hacmi, ortalama hacmin en az kaç katı olmalı? (örn: 1.2 -> %20 daha fazla)
+    # Gelişmiş Filtre Ayarları
+    "PROACTIVE_SCAN_USE_VOLATILITY_FILTER": True, 
+    "PROACTIVE_SCAN_ATR_PERIOD": 14,              
+    "PROACTIVE_SCAN_ATR_THRESHOLD_PERCENT": 0.4,  
+    "PROACTIVE_SCAN_USE_VOLUME_FILTER": True,     
+    "PROACTIVE_SCAN_VOLUME_AVG_PERIOD": 20,       
+    "PROACTIVE_SCAN_VOLUME_CONFIRM_MULTIPLIER": 1.2, 
     
-    # YENİ: Harici Keşif Kaynakları Ayarları
-    "DISCOVERY_USE_TAAPI_SCANNER": True,       # TAAPI.io teknik tarayıcısı aktif edilsin mi?
-    "DISCOVERY_USE_COINGECKO_TRENDING": True, # CoinGecko trend verisi aktif edilsin mi?
+    # Harici Keşif Kaynakları Ayarları
+    "DISCOVERY_USE_TAAPI_SCANNER": True,       
+    "DISCOVERY_USE_COINGECKO_TRENDING": True, 
     
     # --- FİLTRELEME & BİLDİRİM ---
     "PROACTIVE_SCAN_BLACKLIST": ["SHIB", "PEPE", "MEME", "DOGE"],
@@ -97,6 +106,4 @@ default_settings = {
     "TELEGRAM_ENABLED": True,
 
     "INTERACTIVE_SCAN_USE_HOLISTIC_ANALYSIS": False, 
-
-    
 }
